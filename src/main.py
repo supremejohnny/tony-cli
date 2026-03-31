@@ -17,10 +17,53 @@ from .setup import run_setup
 from .tool_pool import assemble_tool_pool
 from .tools import execute_tool, get_tool, get_tools, render_tool_index
 
+BANNER = r"""
+  ______                 
+ /_  __/___  ____  __  __
+  / / / __ \/ __ \/ / / /
+ / / / /_/ / / / / /_/ / 
+/_/  \____/_/ /_/\__, /  
+                /____/   
+"""
+
+
+def repl() -> int:
+    print(BANNER)
+    print("Tony CLI interface")
+    print("Type /ping to test, /quit to exit.")
+    runtime = PortRuntime()
+    engine = QueryEnginePort.from_workspace()
+    while True:
+        try:
+            user_input = input("tony> ").strip()
+        except EOFError:
+            print()
+            break
+        if not user_input:
+            continue
+        if user_input in {"/quit", "/exit"}:
+            break
+        if user_input == "/ping":
+            print("pong")
+            continue
+        if user_input.startswith("/"):
+            print(f"Unknown slash command: {user_input}")
+            continue
+        matches = runtime.route_prompt(user_input)
+        result = engine.submit_message(
+            user_input,
+            matched_commands=tuple(match.name for match in matches if match.kind == 'command'),
+            matched_tools=tuple(match.name for match in matches if match.kind == 'tool'),
+            denied_tools=(),
+        )
+        print(result.output)
+    return 0
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Python porting workspace for the Claude Code rewrite effort')
     subparsers = parser.add_subparsers(dest='command', required=True)
+    subparsers.add_parser('repl', help='start Tony interactive interface')
     subparsers.add_parser('summary', help='render a Markdown summary of the Python porting workspace')
     subparsers.add_parser('manifest', help='print the current Python workspace manifest')
     subparsers.add_parser('parity-audit', help='compare the Python workspace against the local ignored TypeScript archive when available')
@@ -95,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     manifest = build_port_manifest()
+    if args.command == 'repl':
+        return repl()
     if args.command == 'summary':
         print(QueryEnginePort(manifest).render_summary())
         return 0

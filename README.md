@@ -115,6 +115,46 @@ List the current Python modules:
 python3 -m src.main subsystems --limit 16
 ```
 
+Start the minimal Tony interactive interface:
+
+```bash
+python3 -m src.main repl
+```
+
+Or use the local launcher command:
+
+```bash
+./tony
+```
+
+Example slash command inside the Tony interface:
+
+```text
+tony> /ping
+pong
+```
+
+Exit the interface:
+
+```text
+tony> /quit
+```
+
+### Optional shell setup for `tony`
+
+To run `tony` directly from anywhere, add the repository path to your `PATH`.
+
+```bash
+# bash / zsh
+export PATH="/workspace/tony-cli:$PATH"
+```
+
+Then open a new shell (or `source ~/.bashrc` / `source ~/.zshrc`) and run:
+
+```bash
+tony
+```
+
 Run verification:
 
 ```bash
