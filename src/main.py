@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shlex
 
 from .bootstrap_graph import build_bootstrap_graph
 from .command_graph import build_command_graph
@@ -30,7 +32,7 @@ BANNER = r"""
 def repl() -> int:
     print(BANNER)
     print("Tony CLI interface")
-    print("Type /ping to test, /quit to exit.")
+    print("Type /help for commands, /exit to quit.")
     runtime = PortRuntime()
     engine = QueryEnginePort.from_workspace()
     while True:
@@ -41,13 +43,21 @@ def repl() -> int:
             break
         if not user_input:
             continue
-        if user_input in {"/quit", "/exit"}:
-            break
-        if user_input == "/ping":
-            print("pong")
-            continue
         if user_input.startswith("/"):
-            print(f"Unknown slash command: {user_input}")
+            raw = user_input[1:].strip()
+            if not raw:
+                print("Unknown slash command: /")
+                continue
+            parts = shlex.split(raw)
+            command_name = parts[0]
+            command_prompt = " ".join(parts[1:])
+            result = execute_command(command_name, command_prompt)
+            if result.clear_screen:
+                os.system('cls' if os.name == 'nt' else 'clear')
+            if result.message:
+                print(result.message)
+            if result.exit_repl:
+                break
             continue
         matches = runtime.route_prompt(user_input)
         result = engine.submit_message(

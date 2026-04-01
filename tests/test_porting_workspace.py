@@ -133,7 +133,7 @@ class PortingWorkspaceTests(unittest.TestCase):
             capture_output=True,
             text=True,
         )
-        self.assertIn("Mirrored command 'review'", command_result.stdout)
+        self.assertTrue("Mirrored command 'review'" in command_result.stdout or "[real] /review" in command_result.stdout)
         self.assertIn("Mirrored tool 'MCPTool'", tool_result.stdout)
 
     def test_setup_report_and_registry_filters_run(self) -> None:
@@ -232,7 +232,7 @@ class PortingWorkspaceTests(unittest.TestCase):
         registry = build_execution_registry()
         self.assertGreaterEqual(len(registry.commands), 150)
         self.assertGreaterEqual(len(registry.tools), 100)
-        self.assertIn('Mirrored command', registry.command('review').execute('review security'))
+        self.assertTrue('Mirrored command' in registry.command('review').execute('review security') or '[real] /review' in registry.command('review').execute('review security'))
         self.assertIn('Mirrored tool', registry.tool('MCPTool').execute('fetch mcp resources'))
 
     def test_bootstrap_graph_and_direct_modes_run(self) -> None:

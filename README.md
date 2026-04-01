@@ -12,9 +12,6 @@
   <a href="https://github.com/sponsors/instructkr"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github&style=for-the-badge" alt="Sponsor on GitHub" /></a>
 </p>
 
-> [!IMPORTANT]
-> **Rust port is now in progress** on the [`dev/rust`](https://github.com/instructkr/claw-code/tree/dev/rust) branch and is expected to be merged into main today. The Rust implementation aims to deliver a faster, memory-safe harness runtime. Stay tuned — this will be the definitive version of the project.
-
 > If you find this work useful, consider [sponsoring @instructkr on GitHub](https://github.com/sponsors/instructkr) to support continued open-source harness engineering research.
 
 ---
@@ -133,6 +130,8 @@ Example slash command inside the Tony interface:
 tony> /ping
 pong
 ```
+
+Core REPL slash commands are now loaded from Python runtime modules under `src/commands/runtime/`. When a command has no runtime implementation yet, the CLI prints a `[shim fallback]` response from the mirrored snapshot metadata.
 
 Exit the interface:
 
