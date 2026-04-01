@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api::{
-    AnthropicClient, ApiError, ContentBlockDelta, ContentBlockDeltaEvent, ContentBlockStartEvent,
-    InputContentBlock, InputMessage, MessageDeltaEvent, MessageRequest, OutputContentBlock,
-    StreamEvent, ToolChoice, ToolDefinition,
+    ApiClient, ApiError, AuthSource, ContentBlockDelta, ContentBlockDeltaEvent,
+    ContentBlockStartEvent, InputContentBlock, InputMessage, MessageDeltaEvent, MessageRequest,
+    OutputContentBlock, ProviderClient, StreamEvent, ToolChoice, ToolDefinition,
 };
 use serde_json::json;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,8 +20,8 @@ async fn send_message_posts_json_and_parses_response() {
         "\"id\":\"msg_test\",",
         "\"type\":\"message\",",
         "\"role\":\"assistant\",",
-        "\"content\":[{\"type\":\"text\",\"text\":\"Hello from Claude\"}],",
-        "\"model\":\"claude-3-7-sonnet-latest\",",
+        "\"content\":[{\"type\":\"text\",\"text\":\"Hello from Claw\"}],",
+        "\"model\":\"claude-sonnet-4-6\",",
         "\"stop_reason\":\"end_turn\",",
         "\"stop_sequence\":null,",
         "\"usage\":{\"input_tokens\":12,\"output_tokens\":4},",
@@ -34,7 +34,7 @@ async fn send_message_posts_json_and_parses_response() {
     )
     .await;
 
-    let client = AnthropicClient::new("test-key")
+    let client = ApiClient::new("test-key")
         .with_auth_token(Some("proxy-token".to_string()))
         .with_base_url(server.base_url());
     let response = client
@@ -48,7 +48,7 @@ async fn send_message_posts_json_and_parses_response() {
     assert_eq!(
         response.content,
         vec![OutputContentBlock::Text {
-            text: "Hello from Claude".to_string(),
+            text: "Hello from Claw".to_string(),
         }]
     );
 
@@ -68,7 +68,7 @@ async fn send_message_posts_json_and_parses_response() {
         serde_json::from_str(&request.body).expect("request body should be json");
     assert_eq!(
         body.get("model").and_then(serde_json::Value::as_str),
-        Some("claude-3-7-sonnet-latest")
+        Some("claude-sonnet-4-6")
     );
     assert!(body.get("stream").is_none());
     assert_eq!(body["tools"][0]["name"], json!("get_weather"));
@@ -80,7 +80,7 @@ async fn stream_message_parses_sse_events_with_tool_use() {
     let state = Arc::new(Mutex::new(Vec::<CapturedRequest>::new()));
     let sse = concat!(
         "event: message_start\n",
-        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-3-7-sonnet-latest\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}\n\n",
+        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-4-6\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":8,\"output_tokens\":0}}}\n\n",
         "event: content_block_start\n",
         "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_123\",\"name\":\"get_weather\",\"input\":{}}}\n\n",
         "event: content_block_delta\n",
@@ -104,7 +104,7 @@ async fn stream_message_parses_sse_events_with_tool_use() {
     )
     .await;
 
-    let client = AnthropicClient::new("test-key")
+    let client = ApiClient::new("test-key")
         .with_auth_token(Some("proxy-token".to_string()))
         .with_base_url(server.base_url());
     let mut stream = client
@@ -176,13 +176,13 @@ async fn retries_retryable_failures_before_succeeding() {
             http_response(
                 "200 OK",
                 "application/json",
-                "{\"id\":\"msg_retry\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Recovered\"}],\"model\":\"claude-3-7-sonnet-latest\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":3,\"output_tokens\":2}}",
+                "{\"id\":\"msg_retry\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Recovered\"}],\"model\":\"claude-sonnet-4-6\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":3,\"output_tokens\":2}}",
             ),
         ],
     )
     .await;
 
-    let client = AnthropicClient::new("test-key")
+    let client = ApiClient::new("test-key")
         .with_base_url(server.base_url())
         .with_retry_policy(2, Duration::from_millis(1), Duration::from_millis(2));
 
@@ -193,6 +193,47 @@ async fn retries_retryable_failures_before_succeeding() {
 
     assert_eq!(response.total_tokens(), 5);
     assert_eq!(state.lock().await.len(), 2);
+}
+
+#[tokio::test]
+async fn provider_client_dispatches_api_requests() {
+    let state = Arc::new(Mutex::new(Vec::<CapturedRequest>::new()));
+    let server = spawn_server(
+        state.clone(),
+        vec![http_response(
+            "200 OK",
+            "application/json",
+            "{\"id\":\"msg_provider\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Dispatched\"}],\"model\":\"claude-sonnet-4-6\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{\"input_tokens\":3,\"output_tokens\":2}}",
+        )],
+    )
+    .await;
+
+    let client = ProviderClient::from_model_with_default_auth(
+        "claude-sonnet-4-6",
+        Some(AuthSource::ApiKey("test-key".to_string())),
+    )
+    .expect("api provider client should be constructed");
+    let client = match client {
+        ProviderClient::ClawApi(client) => {
+            ProviderClient::ClawApi(client.with_base_url(server.base_url()))
+        }
+        other => panic!("expected default provider, got {other:?}"),
+    };
+
+    let response = client
+        .send_message(&sample_request(false))
+        .await
+        .expect("provider-dispatched request should succeed");
+
+    assert_eq!(response.total_tokens(), 5);
+
+    let captured = state.lock().await;
+    let request = captured.first().expect("server should capture request");
+    assert_eq!(request.path, "/v1/messages");
+    assert_eq!(
+        request.headers.get("x-api-key").map(String::as_str),
+        Some("test-key")
+    );
 }
 
 #[tokio::test]
@@ -215,7 +256,7 @@ async fn surfaces_retry_exhaustion_for_persistent_retryable_errors() {
     )
     .await;
 
-    let client = AnthropicClient::new("test-key")
+    let client = ApiClient::new("test-key")
         .with_base_url(server.base_url())
         .with_retry_policy(1, Duration::from_millis(1), Duration::from_millis(2));
 
@@ -246,11 +287,10 @@ async fn surfaces_retry_exhaustion_for_persistent_retryable_errors() {
 #[tokio::test]
 #[ignore = "requires ANTHROPIC_API_KEY and network access"]
 async fn live_stream_smoke_test() {
-    let client = AnthropicClient::from_env().expect("ANTHROPIC_API_KEY must be set");
+    let client = ApiClient::from_env().expect("ANTHROPIC_API_KEY must be set");
     let mut stream = client
         .stream_message(&MessageRequest {
-            model: std::env::var("ANTHROPIC_MODEL")
-                .unwrap_or_else(|_| "claude-3-7-sonnet-latest".to_string()),
+            model: std::env::var("CLAW_MODEL").unwrap_or_else(|_| "claude-sonnet-4-6".to_string()),
             max_tokens: 32,
             messages: vec![InputMessage::user_text(
                 "Reply with exactly: hello from rust",
@@ -410,7 +450,7 @@ fn http_response_with_headers(
 
 fn sample_request(stream: bool) -> MessageRequest {
     MessageRequest {
-        model: "claude-3-7-sonnet-latest".to_string(),
+        model: "claude-sonnet-4-6".to_string(),
         max_tokens: 64,
         messages: vec![InputMessage {
             role: "user".to_string(),
