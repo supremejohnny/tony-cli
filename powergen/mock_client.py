@@ -31,7 +31,7 @@ class AnthropicLLMClient:
 
         req = MessageRequest(
             model=self._model,
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": user_prompt}],
             system=[{"type": "text", "text": system_prompt}],
             stream=False,
@@ -124,10 +124,64 @@ _MOCK_SPEC_JSON = """{
 }"""
 
 
+_MOCK_TEMPLATE_ANALYSIS_JSON = """{
+  "slides": [
+    {
+      "slide_index": 1,
+      "slide_relevant": true,
+      "text_nodes": [
+        {"original_text": "Presentation Title", "purpose": "title"},
+        {"original_text": "Subtitle or tagline here", "purpose": "body"}
+      ]
+    },
+    {
+      "slide_index": 2,
+      "slide_relevant": false,
+      "text_nodes": [
+        {"original_text": "How to use this template", "purpose": "title"},
+        {"original_text": "Replace slide 1 with your topic title", "purpose": "bullet"},
+        {"original_text": "Delete this instructions slide before presenting", "purpose": "bullet"}
+      ]
+    },
+    {
+      "slide_index": 3,
+      "slide_relevant": true,
+      "text_nodes": [
+        {"original_text": "Slide Heading", "purpose": "title"},
+        {"original_text": "First bullet point", "purpose": "bullet"},
+        {"original_text": "Second bullet point", "purpose": "bullet"},
+        {"original_text": "Third bullet point", "purpose": "bullet"}
+      ]
+    }
+  ]
+}"""
+
+_MOCK_TEMPLATE_MAPPING_JSON = """{
+  "mappings": [
+    {"slide_index": 1, "original_text": "Presentation Title", "replacement_text": "Q1 Sales Review"},
+    {"slide_index": 1, "original_text": "Subtitle or tagline here", "replacement_text": "APAC Region — January to March"},
+    {"slide_index": 2, "original_text": "How to use this template", "replacement_text": "Instructions (should be skipped by filter)"},
+    {"slide_index": 3, "original_text": "Slide Heading", "replacement_text": "Key Highlights"},
+    {"slide_index": 3, "original_text": "First bullet point", "replacement_text": "Revenue up 12% YoY"},
+    {"slide_index": 3, "original_text": "Second bullet point", "replacement_text": "New enterprise accounts: 8"},
+    {"slide_index": 3, "original_text": "Third bullet point", "replacement_text": "Customer retention rate: 94%"}
+  ]
+}"""
+
+
 class MockLLMClient:
     """Returns canned responses for offline / CI testing."""
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
+        # Use system_prompt only for Layer 2 detection: user_prompt for call 2
+        # contains the full analysis JSON (with "text_nodes"), which would
+        # cause a false match if we checked combined.
+        sp = system_prompt.lower()
+        if "presentation analyst" in sp:
+            return _MOCK_TEMPLATE_ANALYSIS_JSON
+        if "presentation writer" in sp:
+            return _MOCK_TEMPLATE_MAPPING_JSON
+        # Layer 1 responses
         combined = (system_prompt + user_prompt).lower()
         if "spec" in combined and "slides" in combined and "audience" in combined:
             return _MOCK_SPEC_JSON

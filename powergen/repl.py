@@ -136,16 +136,46 @@ def _cmd_reset(state: "ProjectState", client: "LLMClient", ws: "WorkspaceContext
     print("  Project reset to INIT.\n")
 
 
+def _cmd_template(state: "ProjectState", client: "LLMClient", ws: "WorkspaceContext", args: str) -> None:
+    if not args.strip():
+        print("Usage: /template <brief description of content>")
+        return
+    from .template_filler import fill_template, pick_template
+
+    if not ws.templates:
+        print("  No .pptx template found in the working directory.")
+        print("  Add a branded .pptx template file and try again.")
+        return
+
+    template_info = pick_template(ws.templates, args)
+    template_path = template_info.path
+    print(f"  Template: {template_path.name}")
+
+    print("  [1/3] Analysing template structure…")
+    print("  [2/3] Generating content mapping…")
+    print("  [3/3] Applying replacements…")
+
+    out = fill_template(
+        brief=args.strip(),
+        template_path=template_path,
+        output_path=None,
+        client=client,
+        workspace=ws,
+    )
+    print(f"\n  Done: {out}\n")
+
+
 # name → (handler, description)
 _SLASH_COMMANDS: dict[str, tuple[Callable, str]] = {
-    "/help":    (_cmd_help,    "Show this help message"),
-    "/exit":    (_cmd_exit,    "Exit powergen"),
-    "/status":  (_cmd_status,  "Show current project stage"),
-    "/create":  (_cmd_create,  "Generate a plan  (args: <topic>)"),
-    "/revise":  (_cmd_revise,  "Revise plan with feedback  (args: <feedback>)"),
-    "/approve": (_cmd_approve, "Approve plan and build slide spec"),
-    "/render":  (_cmd_render,  "Render spec to .pptx  (args: optional output path)"),
-    "/reset":   (_cmd_reset,   "Reset project state to INIT"),
+    "/help":      (_cmd_help,     "Show this help message"),
+    "/exit":      (_cmd_exit,     "Exit powergen"),
+    "/status":    (_cmd_status,   "Show current project stage"),
+    "/create":    (_cmd_create,   "Generate a plan  (args: <topic>)"),
+    "/revise":    (_cmd_revise,   "Revise plan with feedback  (args: <feedback>)"),
+    "/approve":   (_cmd_approve,  "Approve plan and build slide spec"),
+    "/render":    (_cmd_render,   "Render spec to .pptx  (args: optional output path)"),
+    "/template":  (_cmd_template, "Fill a .pptx template with AI content  (args: <brief>)"),
+    "/reset":     (_cmd_reset,    "Reset project state to INIT"),
 }
 
 
