@@ -1,0 +1,169 @@
+{
+  "stage": "RENDERED",
+  "plan": {
+    "overview": "This presentation introduces 'xx' — its purpose, key features, and value proposition — drawing on available workspace assets including documentation, configuration snapshots, and visual media.",
+    "slide_summaries": [
+      "Title slide introducing 'xx' with a compelling hero visual and tagline.",
+      "Problem statement: what challenge or gap 'xx' was created to address.",
+      "Solution overview: how 'xx' solves the problem at a high level.",
+      "Key features and capabilities: a breakdown of what 'xx' can do.",
+      "Architecture and components: how the system is structured based on available component and bridge configurations.",
+      "CLI and developer experience: how users interact with 'xx' via command-line tooling.",
+      "Ecosystem and integrations: dependencies, entry points, and how 'xx' fits into a broader stack.",
+      "Social proof and press: media coverage and community traction highlighted through tweet, WSJ, and star-history assets.",
+      "Getting started: onboarding steps drawn from README and CONTRIBUTING documentation.",
+      "Closing slide: call to action, links, and next steps for the audience."
+    ],
+    "references": [
+      "README.md",
+      "CONTRIBUTING.md",
+      "components.json",
+      "bridge.json",
+      "cli.json",
+      "requires.txt",
+      "entry_points.txt",
+      "clawd-hero.jpeg",
+      "tweet-screenshot.png",
+      "wsj-feature.png",
+      "star-history.png"
+    ],
+    "open_questions": [
+      "What does 'xx' stand for or refer to — is it a product name, codename, or placeholder?",
+      "Who is the target audience for this presentation (e.g., investors, developers, end users)?",
+      "What is the primary goal of the presentation — awareness, adoption, fundraising, or something else?",
+      "Are there any slides or topics that should be explicitly excluded or kept confidential?",
+      "Should the tone be technical and detailed, or high-level and accessible to a general audience?"
+    ]
+  },
+  "spec": {
+    "title": "Introducing xx: Purpose, Features & Value",
+    "audience": "Developers and technical stakeholders",
+    "tone": "professional",
+    "theme_reference": "",
+    "slides": [
+      {
+        "index": 0,
+        "title": "Introducing xx",
+        "bullets": [],
+        "layout": "Title Slide",
+        "notes": "Open with the hero visual (clawd-hero.jpeg) displayed full-bleed. Deliver the tagline with confidence and let the image set the tone before moving into the problem context.",
+        "assets": []
+      },
+      {
+        "index": 1,
+        "title": "The Problem xx Was Built to Solve",
+        "bullets": [
+          "Existing tools leave a critical gap in the workflow",
+          "Developers lose time to fragmented, disconnected systems",
+          "No unified interface for bridging components and commands",
+          "Manual configuration creates friction and errors"
+        ],
+        "layout": "Title and Content",
+        "notes": "Frame the pain point clearly before introducing the solution. Relate to the audience's day-to-day frustrations to build empathy and establish why xx matters.",
+        "assets": []
+      },
+      {
+        "index": 2,
+        "title": "xx: The Solution at a Glance",
+        "bullets": [
+          "A unified platform that connects components seamlessly",
+          "Eliminates manual configuration overhead",
+          "Single entry point for complex multi-system workflows",
+          "Designed for speed, reliability, and developer ergonomics"
+        ],
+        "layout": "Title and Content",
+        "notes": "Keep this high-level — save the deep technical detail for the architecture slide. Emphasize the 'aha moment': one tool that replaces fragmented processes.",
+        "assets": []
+      },
+      {
+        "index": 3,
+        "title": "Key Features and Capabilities",
+        "bullets": [
+          "Modular component system (components.json)",
+          "Bridge layer for cross-system communication (bridge.json)",
+          "Rich CLI tooling for developers (cli.json)",
+          "Bootstrap and assistant automation support",
+          "Extensible via entry points and dependency management"
+        ],
+        "layout": "Title and Content",
+        "notes": "Walk through each feature briefly; each bullet maps to a concrete configuration artifact in the workspace. Signal to technical audience that features are production-ready and well-defined.",
+        "assets": []
+      },
+      {
+        "index": 4,
+        "title": "Architecture and System Components",
+        "bullets": [
+          "Core components defined in components.json",
+          "Bridge layer manages inter-component messaging",
+          "Bootstrap module handles initialization sequences",
+          "Assistant and buddy modules extend core functionality",
+          "Archive surface provides state snapshotting"
+        ],
+        "layout": "Two Content",
+        "notes": "Use the left column for a simplified architecture diagram and the right column for the bullet breakdown. Reference bridge.json and components.json directly if the audience is technical.",
+        "assets": []
+      },
+      {
+        "index": 5,
+        "title": "CLI and Developer Experience",
+        "bullets": [
+          "Full command suite defined in cli.json and commands_snapshot.json",
+          "Intuitive verbs: run, build, connect, inspect",
+          "Consistent flag conventions across all commands",
+          "Fast feedback loops with real-time output"
+        ],
+        "layout": "Title and Content",
+        "notes": "Show a short live demo or a terminal screenshot if available. Emphasize that the CLI was designed with developer ergonomics as a first-class concern.",
+        "assets": []
+      },
+      {
+        "index": 6,
+        "title": "Ecosystem, Integrations, and Stack Fit",
+        "bullets": [
+          "Dependencies managed via requires.txt and dependency_links.txt",
+          "Plug-in entry points enable third-party extensions",
+          "Fits into existing CI/CD and toolchain pipelines",
+          "Minimal footprint — top-level modules stay clean"
+        ],
+        "layout": "Title and Content",
+        "notes": "Highlight that xx is designed to complement, not replace, existing stacks. Use entry_points.txt and requires.txt to ground claims in concrete data.",
+        "assets": []
+      },
+      {
+        "index": 7,
+        "title": "Traction: Press, Community, and Social Proof",
+        "bullets": [
+          "Featured in The Wall Street Journal (wsj-feature.png)",
+          "Viral community response — developer tweet screenshot",
+          "Rapid GitHub star growth (star-history.png)",
+          "Growing ecosystem of contributors and adopters"
+        ],
+        "layout": "Two Content",
+        "notes": "Display the WSJ feature and star-history chart side by side for visual impact. Let the assets speak — briefly narrate the growth story behind each data point.",
+        "assets": []
+      },
+      {
+        "index": 8,
+        "title": "Getting Started with xx",
+        "bullets": [
+          "Install via the CLI in a single command",
+          "Follow the quickstart guide in README.md",
+          "Set up your first bridge and component in minutes",
+          "Contribute and report issues via CONTRIBUTING.md"
+        ],
+        "layout": "Title and Content",
+        "notes": "Make onboarding feel achievable in under five minutes. Point the audience to the README for self-serve setup and to CONTRIBUTING.md for those who want to get involved immediately.",
+        "assets": []
+      },
+      {
+        "index": 9,
+        "title": "Next Steps: Join the xx Community",
+        "bullets": [],
+        "layout": "Section Header",
+        "notes": "Close with energy. Verbally share the repository URL, documentation link, and any community channels (Discord, GitHub Discussions). Invite questions and encourage the audience to try xx today.",
+        "assets": []
+      }
+    ]
+  },
+  "output_path": "F:\\tony-cli\\Introducing xx- Purpose, Features & Value.pptx"
+}

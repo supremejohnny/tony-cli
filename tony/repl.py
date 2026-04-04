@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import os
+import sys
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from .runtime import ConversationRuntime
 
-_BANNER = """\
-Tony — AI agent CLI  (type /help for commands, Ctrl-D to exit)
-"""
+
+def _supports_ansi() -> bool:
+    return (
+        sys.stdout.isatty()
+        and os.environ.get("NO_COLOR") is None
+        and os.environ.get("TERM") != "dumb"
+    )
+
+
+_BANNER_COLOR = (
+    "\033[38;5;39m  ████████╗ ██████╗ ███╗   ██╗██╗   ██╗\033[0m\n"
+    "\033[38;5;45m     ██╔══╝██╔═══██╗████╗  ██║╚██╗ ██╔╝\033[0m\n"
+    "\033[38;5;51m     ██║   ██║   ██║██╔██╗ ██║ ╚████╔╝ \033[0m\n"
+    "\033[38;5;87m     ██║   ██║   ██║██║╚██╗██║  ╚██╔╝  \033[0m\n"
+    "\033[38;5;123m     ██║   ╚██████╔╝██║ ╚████║   ██║   \033[0m\n"
+    "\033[38;5;159m     ╚═╝    ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   \033[0m\n"
+    "\033[38;5;245m  AI Agent CLI  |  /help for commands  |  Ctrl-D to exit\033[0m\n"
+)
+_BANNER_PLAIN = "Tony | AI Agent CLI  (type /help for commands, Ctrl-D to exit)\n"
+_BANNER = _BANNER_COLOR if _supports_ansi() else _BANNER_PLAIN
 
 
 # ---------------------------------------------------------------------------
