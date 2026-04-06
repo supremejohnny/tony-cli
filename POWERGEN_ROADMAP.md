@@ -129,6 +129,35 @@ The content mapping call passes the full analysis JSON in `user_prompt`, which c
 
 ---
 
+## Future Optimization — XML Pattern Extraction (Token Reduction)
+
+**Idea**: Instead of passing raw XML or full slide text to the LLM, pre-process the template locally to extract a structured schema, then send only the schema.
+
+**How it works**
+1. Use `scripts/office/unpack.py` to unpack the `.pptx` into raw XML
+2. Local Python parses the XML and extracts a lightweight schema per slide:
+   - Layout type (title page / two-column / content / blank etc.)
+   - Placeholder types and positions (`ph type`, `ph idx`)
+   - Text hierarchy levels (title / subtitle / bullet depth)
+   - Recurring style patterns (font, size, color groupings)
+3. Send only the schema JSON to the LLM — not the full XML or raw text
+4. LLM fills content against the schema
+5. Use `scripts/office/pack.py` to write content back into XML and repack
+
+**Expected benefit**
+- Token reduction: ~80–90% vs sending full XML
+- This is the scenario where `scripts/` becomes a core pipeline component rather than dead code
+- Pairs naturally with the multi-template merging use case (extract schemas from multiple templates, let LLM decide which sections to take from which)
+
+**Dependencies**
+- Requires `scripts/office/unpack.py` and `pack.py` to be integrated into the main workflow
+- Needs a schema extraction module (new, ~100–150 lines of Python)
+- `scripts/office/validate.py` can then gate the final output for correctness
+
+**Status**: Not started. Low priority until Layer 3 is underway, but the schema extraction module could be prototyped independently.
+
+---
+
 ## Layer 3 — Full Visual (Future)
 
 **Goal**: Presentation-ready output requiring 1-2 steps of human polish at most.
