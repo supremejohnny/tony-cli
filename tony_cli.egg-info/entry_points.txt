@@ -1,3 +1,0 @@
-[console_scripts]
-powergen = powergen.cli:main
-tony = tony.cli:main
