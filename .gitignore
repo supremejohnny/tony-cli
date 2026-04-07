@@ -40,5 +40,6 @@ note.txt
 # Logs
 *.log
 
-#.powergen User chat history
+# powergen runtime directories
 .powergen/
+.powergen_distill/

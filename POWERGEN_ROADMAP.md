@@ -58,6 +58,14 @@ Mock returns hardcoded plan/spec JSON. The rendered `.pptx` will be a real file 
 
 ---
 
+## powergen distill (Complete — initial implementation)
+
+Converts workspace files (`.pptx`, `.pdf`, `.docx`, `.md`, `.txt`) into structured `.distill.json` knowledge chunks stored in `.powergen_distill/`. Provides a persistent context layer for `create` and `template`. Hash-based caching means re-runs are free for unchanged files. `template` runs distill automatically as a pre-step.
+
+→ See [`.powergen_skill/distill.md`](.powergen_skill/distill.md) for full schema, step-by-step execution, and architecture notes.
+
+---
+
 ## Layer 2 — Template-Based (Complete — initial implementation)
 
 **Goal**: Template-driven output. Model handles content only; all visual design comes from the template.
@@ -93,7 +101,7 @@ The original plan used unpack → XML edit → pack. This was replaced with dire
 **Known next steps**
 - `/template-revise "feedback"` command: re-run mapping with original brief + revision feedback appended (stateless, one extra API call)
 - Pass brief to Call 1 (analysis): allows `slide_relevant` decisions to be contextually aware, not just structural; enables per-slide `content_hint` for richer mapping
-- Workspace content utilization: pass summaries of `.md`/`.txt` files in the working directory as reference material for Call 2
+- Workspace content utilization: distill results from `.powergen_distill/` are now available as structured context for Call 2 (implemented via distill pre-step)
 
 **Mock testing (zero tokens)**
 

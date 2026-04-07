@@ -49,6 +49,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Output .pptx path (default: <template>-filled.pptx)",
     )
 
+    distill_p = sub.add_parser("distill", help="Distill workspace files into .powergen_distill/")
+    distill_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-distill even if a file has not changed",
+    )
+    distill_p.add_argument(
+        "--model",
+        default="claude-haiku-4-5-20251001",
+        metavar="MODEL",
+        help="Model for distillation (default: claude-haiku-4-5-20251001)",
+    )
+
     sub.add_parser("status", help="Show current project stage")
     sub.add_parser("reset", help="Reset project state to INIT")
 
@@ -108,10 +121,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\nRendered: {out}")
 
         elif args.cmd == "template":
+            from .distiller import run_distill
             from .template_filler import fill_template, pick_template
             if not workspace.templates:
                 print("Error: no .pptx template found in the working directory.", file=sys.stderr)
                 return 1
+            distill_dir = Path.cwd() / ".powergen_distill"
+            distill_dir.mkdir(exist_ok=True)
+            distill_client = make_llm_client(mock=args.mock, model="claude-haiku-4-5-20251001")
+            print("[distill] Updating knowledge index...")
+            run_distill(workspace, distill_client, distill_dir)
             template_info = pick_template(workspace.templates, args.brief)
             template_path = template_info.path
             print(f"Template: {template_path.name}")
@@ -127,6 +146,13 @@ def main(argv: list[str] | None = None) -> int:
                 workspace=workspace,
             )
             print(f"\nDone: {out}")
+
+        elif args.cmd == "distill":
+            from .distiller import run_distill
+            distill_client = make_llm_client(mock=args.mock, model=args.model)
+            distill_dir = Path.cwd() / ".powergen_distill"
+            distill_dir.mkdir(exist_ok=True)
+            run_distill(workspace, distill_client, distill_dir, force=getattr(args, "force", False))
 
         elif args.cmd == "status":
             print(f"Stage: {state.stage.value}")

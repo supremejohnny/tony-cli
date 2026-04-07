@@ -168,6 +168,74 @@ _MOCK_TEMPLATE_MAPPING_JSON = """{
   ]
 }"""
 
+_MOCK_DISTILL_JSON = """{
+  "version": "1.0",
+  "source": {
+    "file_name": "mock_lecture.pptx",
+    "file_hash": "",
+    "distilled_at": ""
+  },
+  "global_summary": "A mock lecture covering paging and the Translation Lookaside Buffer (TLB). Introduces virtual-to-physical address mapping and explains how the TLB accelerates translation.",
+  "main_topics": ["paging", "address translation", "TLB", "virtual memory"],
+  "chunks": [
+    {
+      "chunk_id": "chunk_01",
+      "slide_range": [1, 2],
+      "titles": ["Overview", "Paging Basics"],
+      "summary_short": "Introduces paging as a fixed-size memory management scheme and the page table used for address translation.",
+      "key_points": [
+        "Virtual memory is divided into fixed-size pages.",
+        "Physical memory is divided into frames of the same size.",
+        "The page table maps virtual page numbers to physical frame numbers."
+      ],
+      "definitions": [
+        {"term": "paging", "definition": "A memory management scheme that divides virtual memory into fixed-size pages and physical memory into fixed-size frames."},
+        {"term": "page table", "definition": "A data structure that maps virtual page numbers to physical frame numbers."}
+      ],
+      "entities": ["paging", "page table", "virtual memory", "frame"],
+      "question_signatures": [
+        "What is paging?",
+        "How does address translation work in paging?",
+        "What is a page table?"
+      ],
+      "keywords": ["paging", "page table", "frame", "virtual address", "physical address"],
+      "anchors": {
+        "start_slide": 1,
+        "end_slide": 2,
+        "prev_title": null,
+        "next_title": "Translation Lookaside Buffer"
+      }
+    },
+    {
+      "chunk_id": "chunk_02",
+      "slide_range": [3, 4],
+      "titles": ["Translation Lookaside Buffer", "TLB Example"],
+      "summary_short": "Explains the TLB as a cache for recent page table translations and illustrates hit vs miss latency.",
+      "key_points": [
+        "The TLB caches recent page table entries in hardware.",
+        "A TLB hit avoids a slow page table memory lookup.",
+        "A TLB miss falls back to the full page table at the cost of one extra memory access."
+      ],
+      "definitions": [
+        {"term": "TLB", "definition": "A small hardware cache storing recent virtual-to-physical page table translations."}
+      ],
+      "entities": ["TLB", "page table", "TLB hit", "TLB miss"],
+      "question_signatures": [
+        "What is a TLB?",
+        "Why does a TLB improve performance?",
+        "What happens on a TLB miss?"
+      ],
+      "keywords": ["TLB", "translation lookaside buffer", "TLB hit", "TLB miss", "cache"],
+      "anchors": {
+        "start_slide": 3,
+        "end_slide": 4,
+        "prev_title": "Paging Basics",
+        "next_title": null
+      }
+    }
+  ]
+}"""
+
 
 class MockLLMClient:
     """Returns canned responses for offline / CI testing."""
@@ -181,6 +249,8 @@ class MockLLMClient:
             return _MOCK_TEMPLATE_ANALYSIS_JSON
         if "presentation writer" in sp:
             return _MOCK_TEMPLATE_MAPPING_JSON
+        if "knowledge distiller" in sp:
+            return _MOCK_DISTILL_JSON
         # Layer 1 responses
         combined = (system_prompt + user_prompt).lower()
         if "spec" in combined and "slides" in combined and "audience" in combined:
