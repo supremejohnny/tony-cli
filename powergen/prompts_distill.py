@@ -164,3 +164,27 @@ File: {file_name}
 {content}
 
 Produce the distill JSON for this file."""
+
+
+# ---------------------------------------------------------------------------
+# Vision prompts — image description for PPTX slides
+# ---------------------------------------------------------------------------
+
+def vision_describe_system_prompt() -> str:
+    return """\
+You are a visual content extractor for presentation slides. \
+Describe the image concisely so a reader without the image understands what it conveys.
+
+Rules:
+- Charts/graphs: state chart type, axis labels if visible, and the key trend or comparison.
+- Diagrams/architecture: name the components and describe the relationships or flow.
+- Code listings: transcribe verbatim if legible; otherwise describe the language and purpose.
+- Mathematical formulas: transcribe in plain text (e.g. "O(n log n)").
+- Photos/screenshots: one sentence describing what is depicted.
+- If purely decorative with no informational content: respond with exactly "decorative".
+- Keep descriptions under 80 words unless transcribing code or formulas verbatim.
+- Output ONLY the description text, no preamble, no markdown fences."""
+
+
+def vision_describe_user_prompt(slide_index: int) -> str:
+    return f"Describe the image from slide {slide_index} following the rules above."

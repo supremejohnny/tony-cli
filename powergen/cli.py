@@ -21,6 +21,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="MODEL",
         help="Anthropic model to use (default: claude-sonnet-4-6)",
     )
+    parser.add_argument(
+        "--no-vision",
+        action="store_true",
+        help="Skip image/vision processing during distillation (reduces API cost)",
+    )
 
     sub = parser.add_subparsers(dest="cmd")
 
@@ -130,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             distill_dir.mkdir(exist_ok=True)
             distill_client = make_llm_client(mock=args.mock, model="claude-haiku-4-5-20251001")
             print("[distill] Updating knowledge index...")
-            run_distill(workspace, distill_client, distill_dir)
+            run_distill(workspace, distill_client, distill_dir, enable_vision=not args.no_vision)
             template_info = pick_template(workspace.templates, args.brief)
             template_path = template_info.path
             print(f"Template: {template_path.name}")
@@ -152,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             distill_client = make_llm_client(mock=args.mock, model=args.model)
             distill_dir = Path.cwd() / ".powergen_distill"
             distill_dir.mkdir(exist_ok=True)
-            run_distill(workspace, distill_client, distill_dir, force=getattr(args, "force", False))
+            run_distill(workspace, distill_client, distill_dir, force=getattr(args, "force", False), enable_vision=not args.no_vision)
 
         elif args.cmd == "status":
             print(f"Stage: {state.stage.value}")

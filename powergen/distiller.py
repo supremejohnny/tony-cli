@@ -17,6 +17,8 @@ from .prompts_distill import (
     distill_generic_user_prompt,
     distill_pptx_system_prompt,
     distill_pptx_user_prompt,
+    vision_describe_system_prompt,
+    vision_describe_user_prompt,
 )
 
 # Extensions handled by each extraction path
@@ -40,6 +42,13 @@ class SlideText:
     index: int   # 1-based
     title: str
     body: str
+
+
+@dataclass
+class SlideImage:
+    slide_index: int   # 1-based, matches SlideText.index
+    blob: bytes
+    media_type: str    # "image/jpeg" | "image/png" | "image/gif" | "image/webp"
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +80,103 @@ def extract_pptx_slides(path: Path) -> list[SlideText]:
             body_parts.append(text)
         slides.append(SlideText(index=i, title=title, body="\n".join(body_parts)))
     return slides
+
+
+def _detect_media_type(blob: bytes) -> str:
+    """Detect image media type from magic bytes."""
+    if blob[:4] == b"\x89PNG":
+        return "image/png"
+    if blob[:2] == b"\xff\xd8":
+        return "image/jpeg"
+    if blob[:4] in (b"GIF8", b"GIF9"):
+        return "image/gif"
+    if blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"  # safe fallback
+
+
+def _is_decorative(shape: object, slide_w: int, slide_h: int) -> bool:
+    """Return True if the shape should be skipped (too small or in the margin)."""
+    area = getattr(shape, "width", 0) * getattr(shape, "height", 0)
+    if area < 0.05 * slide_w * slide_h:
+        return True
+    cx = getattr(shape, "left", 0) + getattr(shape, "width", 0) / 2
+    cy = getattr(shape, "top", 0) + getattr(shape, "height", 0) / 2
+    if (cx < slide_w * 0.10 or cx > slide_w * 0.90
+            or cy < slide_h * 0.10 or cy > slide_h * 0.90):
+        return True
+    return False
+
+
+def _iter_shapes(shapes: object):
+    """Recursively yield all shapes, descending into group shapes."""
+    from pptx.enum.shapes import MSO_SHAPE_TYPE  # type: ignore[import]
+    for shape in shapes:  # type: ignore[union-attr]
+        yield shape
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _iter_shapes(shape.shapes)
+
+
+def extract_pptx_slides_with_images(
+    path: Path,
+) -> tuple[list[SlideText], list[SlideImage]]:
+    """Extract per-slide text and embedded images from a PPTX file.
+
+    Images are detected by attempting shape.image.blob (works for both
+    PICTURE and PLACEHOLDER shapes that contain images). Group shapes are
+    traversed recursively.
+
+    Filters: area >= 5% of slide AND centre not in outer 10% margin.
+    Blobs > 3.5 MB are skipped (Anthropic API per-image size limit).
+    """
+    from pptx import Presentation  # type: ignore[import]
+
+    prs = Presentation(str(path))
+    slide_w: int = prs.slide_width
+    slide_h: int = prs.slide_height
+
+    slides: list[SlideText] = []
+    images: list[SlideImage] = []
+
+    for i, slide in enumerate(prs.slides, 1):
+        title = ""
+        body_parts: list[str] = []
+        for shape in _iter_shapes(slide.shapes):
+            # --- text extraction ---
+            if shape.has_text_frame:
+                text = shape.text_frame.text.strip()
+                if text:
+                    try:
+                        if (shape.placeholder_format is not None
+                                and shape.placeholder_format.idx == 0):
+                            title = text
+                            continue
+                    except Exception:
+                        pass
+                    body_parts.append(text)
+
+            # --- image extraction ---
+            # Use image.blob access rather than shape_type check:
+            # images in PLACEHOLDER shapes have type=14, not PICTURE=13.
+            try:
+                blob = shape.image.blob
+            except (AttributeError, ValueError):
+                blob = None  # shape has no image — expected, skip
+            except Exception as exc:
+                print(f"  [warn] slide {i} shape '{shape.name}': unexpected image read error: {exc}")
+                blob = None
+
+            if blob is not None:
+                if not _is_decorative(shape, slide_w, slide_h) and len(blob) <= 3_500_000:
+                    images.append(SlideImage(
+                        slide_index=i,
+                        blob=blob,
+                        media_type=_detect_media_type(blob),
+                    ))
+
+        slides.append(SlideText(index=i, title=title, body="\n".join(body_parts)))
+
+    return slides, images
 
 
 def format_slides_for_prompt(slides: list[SlideText]) -> str:
@@ -151,6 +257,58 @@ def _parse_distill_response(raw: str, label: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Vision — describe images embedded in PPTX slides
+# ---------------------------------------------------------------------------
+
+def _describe_slide_images(
+    images: list[SlideImage],
+    client: "LLMClient",
+) -> dict[int, list[str]]:
+    """Call generate_vision() once per slide that has images.
+
+    Returns a mapping of slide_index → list of '[Visual: ...]' strings.
+    All images from the same slide are batched into a single API call.
+    """
+    import base64
+
+    # Group images by slide
+    by_slide: dict[int, list[SlideImage]] = {}
+    for img in images:
+        by_slide.setdefault(img.slide_index, []).append(img)
+
+    system = vision_describe_system_prompt()
+    result: dict[int, list[str]] = {}
+
+    for slide_idx, slide_images in sorted(by_slide.items()):
+        image_blocks: list[dict] = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": img.media_type,
+                    "data": base64.standard_b64encode(img.blob).decode("ascii"),
+                },
+            }
+            for img in slide_images
+        ]
+        user = vision_describe_user_prompt(slide_idx)
+        try:
+            raw = client.generate_vision(system, image_blocks, user).strip()
+        except Exception as exc:
+            raw = f"[Vision error: {exc}]"
+
+        if not raw or raw.lower() == "decorative":
+            result[slide_idx] = []
+            continue
+
+        if not raw.startswith("[Visual:"):
+            raw = f"[Visual: {raw}]"
+        result[slide_idx] = [raw]
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Local combined_text injection for PPTX
 # ---------------------------------------------------------------------------
 
@@ -159,12 +317,17 @@ def _build_slide_index(slides: list[SlideText]) -> dict[int, SlideText]:
     return {s.index: s for s in slides}
 
 
-def _inject_combined_text(data: dict, slide_index: dict[int, SlideText]) -> None:
-    """Inject combined_text into each PPTX chunk using its slide_range.
+def _inject_combined_text(
+    data: dict,
+    slide_index: dict[int, SlideText],
+    vision_map: dict[int, list[str]] | None = None,
+) -> None:
+    """Inject combined_text (and has_images) into each PPTX chunk.
 
     The LLM does not output combined_text for PPTX — we assemble it locally
     from the already-extracted SlideText list, guaranteeing verbatim content.
-    The field is inserted right after 'titles' so the JSON reads naturally.
+    Vision descriptions from vision_map are appended after the slide text.
+    Both fields are inserted right after 'titles' so the JSON reads naturally.
     """
     for chunk in data.get("chunks", []):
         slide_range = chunk.get("slide_range")
@@ -182,12 +345,22 @@ def _inject_combined_text(data: dict, slide_index: dict[int, SlideText]) -> None
             parts.append(f"{header}\n{body}")
         combined = "\n\n".join(parts)
 
-        # Insert combined_text after 'titles' by rebuilding the chunk dict
+        # Append vision descriptions and determine has_images
+        has_images = False
+        if vision_map:
+            for idx in range(start, end + 1):
+                descs = vision_map.get(idx, [])
+                if descs:
+                    has_images = True
+                    combined += "\n" + "\n".join(descs)
+
+        # Insert combined_text and has_images after 'titles' by rebuilding the chunk dict
         new_chunk: dict = {}
         for key, val in chunk.items():
             new_chunk[key] = val
             if key == "titles":
                 new_chunk["combined_text"] = combined
+                new_chunk["has_images"] = has_images
         chunk.clear()
         chunk.update(new_chunk)
 
@@ -196,12 +369,16 @@ def _inject_combined_text(data: dict, slide_index: dict[int, SlideText]) -> None
 # Per-file distillation
 # ---------------------------------------------------------------------------
 
-def _distill_one(path: Path, client: "LLMClient") -> dict:
+def _distill_one(path: Path, client: "LLMClient", enable_vision: bool = True) -> dict:
     """Run a single LLM distill call for *path*. Returns the parsed JSON dict."""
     ext = path.suffix.lower()
 
     if ext in _PPTX_EXTS:
-        slides = extract_pptx_slides(path)
+        if enable_vision:
+            slides, images = extract_pptx_slides_with_images(path)
+        else:
+            slides = extract_pptx_slides(path)
+            images = []
         slide_text = format_slides_for_prompt(slides)
         if len(slide_text) > _MAX_INPUT_CHARS:
             slide_text = slide_text[:_MAX_INPUT_CHARS] + "\n\n[... truncated — file too large ...]"
@@ -209,8 +386,10 @@ def _distill_one(path: Path, client: "LLMClient") -> dict:
         user = distill_pptx_user_prompt(path.name, slide_text)
         raw = client.generate(system, user)
         data = _parse_distill_response(raw, path.name)
+        # Build vision map from images (empty if vision disabled or no images found)
+        vision_map = _describe_slide_images(images, client) if images else None
         # Inject combined_text locally — no LLM output tokens spent on verbatim text
-        _inject_combined_text(data, _build_slide_index(slides))
+        _inject_combined_text(data, _build_slide_index(slides), vision_map)
     else:
         content = extract_generic_text(path)
         if len(content) > _MAX_INPUT_CHARS:
@@ -295,6 +474,7 @@ def run_distill(
     client: "LLMClient",
     distill_dir: Path,
     force: bool = False,
+    enable_vision: bool = True,
 ) -> None:
     """Distill all supported files in *workspace*, writing results to *distill_dir*."""
     cwd = Path.cwd()
@@ -336,7 +516,7 @@ def run_distill(
 
         print(f"{prefix} -> distilling...")
         try:
-            data = _distill_one(path, client)
+            data = _distill_one(path, client, enable_vision=enable_vision)
         except Exception as exc:
             print(f"  Error: {exc}")
             continue

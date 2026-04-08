@@ -7,6 +7,12 @@ from typing import Protocol, runtime_checkable
 @runtime_checkable
 class LLMClient(Protocol):
     def generate(self, system_prompt: str, user_prompt: str) -> str: ...
+    def generate_vision(
+        self,
+        system_prompt: str,
+        image_blocks: list[dict],
+        text_prompt: str,
+    ) -> str: ...
 
 
 # ---------------------------------------------------------------------------
@@ -33,6 +39,29 @@ class AnthropicLLMClient:
             model=self._model,
             max_tokens=8192,
             messages=[{"role": "user", "content": user_prompt}],
+            system=[{"type": "text", "text": system_prompt}],
+            stream=False,
+        )
+        resp = self._client.send_message(req)
+        for block in resp.content:
+            if isinstance(block, TextBlock):
+                return block.text
+        return ""
+
+    def generate_vision(
+        self,
+        system_prompt: str,
+        image_blocks: list[dict],
+        text_prompt: str,
+    ) -> str:
+        from tony.api_client import MessageRequest  # type: ignore[import]
+        from tony.models import TextBlock  # type: ignore[import]
+
+        content: list[dict] = image_blocks + [{"type": "text", "text": text_prompt}]
+        req = MessageRequest(
+            model=self._model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": content}],
             system=[{"type": "text", "text": system_prompt}],
             stream=False,
         )
@@ -237,6 +266,11 @@ _MOCK_DISTILL_JSON = """{
 }"""
 
 
+_MOCK_VISION_RESPONSE = (
+    "[Visual: A diagram showing example content with labeled nodes and connecting arrows. (mock)]"
+)
+
+
 class MockLLMClient:
     """Returns canned responses for offline / CI testing."""
 
@@ -256,6 +290,14 @@ class MockLLMClient:
         if "spec" in combined and "slides" in combined and "audience" in combined:
             return _MOCK_SPEC_JSON
         return _MOCK_PLAN_JSON
+
+    def generate_vision(
+        self,
+        system_prompt: str,
+        image_blocks: list[dict],
+        text_prompt: str,
+    ) -> str:
+        return _MOCK_VISION_RESPONSE
 
 
 # ---------------------------------------------------------------------------
