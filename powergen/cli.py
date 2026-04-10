@@ -67,6 +67,19 @@ def main(argv: list[str] | None = None) -> int:
         help="Model for distillation (default: claude-haiku-4-5-20251001)",
     )
 
+    catalog_p = sub.add_parser("catalog", help="Analyze template PPTX and generate pattern catalog into .powergen_catalog/")
+    catalog_p.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-catalog even if the template has not changed",
+    )
+    catalog_p.add_argument(
+        "--model",
+        default="claude-haiku-4-5-20251001",
+        metavar="MODEL",
+        help="Model for catalog analysis (default: claude-haiku-4-5-20251001)",
+    )
+
     sub.add_parser("status", help="Show current project stage")
     sub.add_parser("reset", help="Reset project state to INIT")
 
@@ -158,6 +171,12 @@ def main(argv: list[str] | None = None) -> int:
             distill_dir = Path.cwd() / ".powergen_distill"
             distill_dir.mkdir(exist_ok=True)
             run_distill(workspace, distill_client, distill_dir, force=getattr(args, "force", False), enable_vision=not args.no_vision)
+
+        elif args.cmd == "catalog":
+            from .catalog import run_catalog
+            catalog_client = make_llm_client(mock=args.mock, model=args.model)
+            catalog_dir = Path.cwd() / ".powergen_catalog"
+            run_catalog(workspace, catalog_client, catalog_dir, force=getattr(args, "force", False))
 
         elif args.cmd == "status":
             print(f"Stage: {state.stage.value}")

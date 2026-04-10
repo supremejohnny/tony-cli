@@ -266,6 +266,71 @@ _MOCK_DISTILL_JSON = """{
 }"""
 
 
+_MOCK_CATALOG_JSON = """[
+  {
+    "pattern_id": "tutor_intro_01",
+    "source_slide": 1,
+    "layout_name": "自定义版式",
+    "description": "个人简介页，左侧照片，右侧姓名、学历和个人简介文字",
+    "slots": [
+      {"name": "name",        "shape_name": "文本占位符 48", "content_type": "text",    "max_chars": 30},
+      {"name": "credentials", "shape_name": "文本框 10",     "content_type": "text",    "max_chars": 80},
+      {"name": "bio",         "shape_name": "文本框 15",     "content_type": "bullets", "max_chars": 200}
+    ],
+    "fit_for": ["导师介绍", "讲师简介", "个人背景说明"],
+    "not_fit_for": ["课程内容", "数据展示", "多列对比"],
+    "reusable": false
+  },
+  {
+    "pattern_id": "course_overview_01",
+    "source_slide": 2,
+    "layout_name": "DEFAULT-master",
+    "description": "课程标题 + 两段式结构（section header + 正文），适合单课程详细介绍",
+    "slots": [
+      {"name": "course_title",    "shape_name": "Text 1", "content_type": "text",    "max_chars": 60},
+      {"name": "section_header_1","shape_name": "Text 2", "content_type": "text",    "max_chars": 40},
+      {"name": "section_body_1",  "shape_name": "Text 3", "content_type": "bullets", "max_chars": 300},
+      {"name": "section_header_2","shape_name": "Text 4", "content_type": "text",    "max_chars": 40},
+      {"name": "section_body_2",  "shape_name": "Text 5", "content_type": "bullets", "max_chars": 300}
+    ],
+    "fit_for": ["课程介绍", "考核方式说明", "学习重点列举", "章节详解"],
+    "not_fit_for": ["多列对比", "流程图", "纯视觉内容"],
+    "reusable": true
+  },
+  {
+    "pattern_id": "prerequisite_chain_01",
+    "source_slide": 3,
+    "layout_name": "DEFAULT-master",
+    "description": "标题 + 先修链流程图节点 + 底部双栏课程说明 + takeaway条",
+    "slots": [
+      {"name": "title",       "shape_name": "Text 1",  "content_type": "text", "max_chars": 70},
+      {"name": "chain_label", "shape_name": "Text 2",  "content_type": "text", "max_chars": 50},
+      {"name": "takeaway",    "shape_name": "Text 26", "content_type": "text", "max_chars": 120}
+    ],
+    "fit_for": ["先修关系说明", "路径规划", "课程链展示"],
+    "not_fit_for": ["纯文字内容", "多段落正文", "个人介绍"],
+    "reusable": true
+  },
+  {
+    "pattern_id": "multi_option_comparison_01",
+    "source_slide": 4,
+    "layout_name": "DEFAULT-master",
+    "description": "标题 + 三列选项对比，每列含独立标题和正文",
+    "slots": [
+      {"name": "title",      "shape_name": "Text 3",  "content_type": "text",    "max_chars": 60},
+      {"name": "col1_title", "shape_name": "Text 5",  "content_type": "text",    "max_chars": 30},
+      {"name": "col1_body",  "shape_name": "Text 6",  "content_type": "bullets", "max_chars": 250},
+      {"name": "col2_title", "shape_name": "Text 8",  "content_type": "text",    "max_chars": 30},
+      {"name": "col2_body",  "shape_name": "Text 9",  "content_type": "bullets", "max_chars": 250},
+      {"name": "col3_title", "shape_name": "Text 11", "content_type": "text",    "max_chars": 30},
+      {"name": "col3_body",  "shape_name": "Text 12", "content_type": "bullets", "max_chars": 250}
+    ],
+    "fit_for": ["多方案对比", "选项分析", "多场景展示"],
+    "not_fit_for": ["单一主题", "流程说明", "个人介绍"],
+    "reusable": true
+  }
+]"""
+
 _MOCK_VISION_RESPONSE = (
     "[Visual: A diagram showing example content with labeled nodes and connecting arrows. (mock)]"
 )
@@ -279,6 +344,8 @@ class MockLLMClient:
         # contains the full analysis JSON (with "text_nodes"), which would
         # cause a false match if we checked combined.
         sp = system_prompt.lower()
+        if "template structure analyzer" in sp:
+            return _MOCK_CATALOG_JSON
         if "presentation analyst" in sp:
             return _MOCK_TEMPLATE_ANALYSIS_JSON
         if "presentation writer" in sp:
