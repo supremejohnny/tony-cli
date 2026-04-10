@@ -43,3 +43,6 @@ note.txt
 # powergen runtime directories
 .powergen/
 .powergen_distill/
+
+#test folder
+test/
