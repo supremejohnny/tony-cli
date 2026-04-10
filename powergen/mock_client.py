@@ -266,6 +266,40 @@ _MOCK_DISTILL_JSON = """{
 }"""
 
 
+_MOCK_PLAN_CATALOG_JSON = """[
+  {
+    "pattern_id": "tutor_intro_01",
+    "slots": {
+      "tutor_name": "Dr. Sarah Chen",
+      "credentials": "PhD Economics, Harvard Business School",
+      "bio": "10 years retail industry experience\\nFormer VP of Sales at Fortune 500\\nSpecialises in seasonal demand cycles",
+      "section_title": "Tutor Intro"
+    }
+  },
+  {
+    "pattern_id": "course_overview_01",
+    "slots": {
+      "course_title": "MKTG 401: Seasonal Sales Strategy",
+      "assessment_header": "Assessment Methods",
+      "assessment_body": "Midterm case analysis (30%)\\nFinal group project (40%)\\nClass participation (30%)",
+      "learning_points_header": "Learning Objectives",
+      "learning_points_body": "Understand seasonal demand cycles\\nDevelop promotional pricing strategies\\nAnalyse historical sales data patterns"
+    }
+  },
+  {
+    "pattern_id": "three_option_comparison_01",
+    "slots": {
+      "main_title": "Which Strategy Fits Your Product?",
+      "option_1_title": "Early Bird Pricing",
+      "option_1_body": "Launch 8 weeks before peak season\\nGradual price increase builds momentum\\nIdeal for planned purchase categories",
+      "option_2_title": "Flash Sales",
+      "option_2_body": "24-48 hour high-urgency windows\\nClears excess seasonal inventory\\nDrives rapid volume spikes",
+      "option_3_title": "Loyalty Discounts",
+      "option_3_body": "Reward repeat customers first\\nStaggered discount tiers\\nProtects margin long-term"
+    }
+  }
+]"""
+
 _MOCK_CATALOG_JSON = """[
   {
     "pattern_id": "tutor_intro_01",
@@ -346,6 +380,8 @@ class MockLLMClient:
         sp = system_prompt.lower()
         if "template structure analyzer" in sp:
             return _MOCK_CATALOG_JSON
+        if "presentation content planner" in sp:
+            return _MOCK_PLAN_CATALOG_JSON
         if "presentation analyst" in sp:
             return _MOCK_TEMPLATE_ANALYSIS_JSON
         if "presentation writer" in sp:

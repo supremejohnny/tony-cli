@@ -67,6 +67,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Model for distillation (default: claude-haiku-4-5-20251001)",
     )
 
+    fill_p = sub.add_parser("fill", help="Fill a template using the Pattern Catalog (Phase 2+3 pipeline)")
+    fill_p.add_argument("brief", help="Description of the content to generate")
+    fill_p.add_argument(
+        "--output", "-o",
+        default=None,
+        metavar="FILE",
+        help="Output .pptx path (default: <template>-filled.pptx)",
+    )
+    fill_p.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="Print the content plan JSON and exit without writing a .pptx",
+    )
+
     catalog_p = sub.add_parser("catalog", help="Analyze template PPTX and generate pattern catalog into .powergen_catalog/")
     catalog_p.add_argument(
         "--force",
@@ -171,6 +185,50 @@ def main(argv: list[str] | None = None) -> int:
             distill_dir = Path.cwd() / ".powergen_distill"
             distill_dir.mkdir(exist_ok=True)
             run_distill(workspace, distill_client, distill_dir, force=getattr(args, "force", False), enable_vision=not args.no_vision)
+
+        elif args.cmd == "fill":
+            from .catalog_planner import run_catalog_plan
+            from .catalog_filler import fill_from_plan
+            if not workspace.templates:
+                print("Error: no .pptx template found in the working directory.", file=sys.stderr)
+                return 1
+            from .template_filler import pick_template
+            template_info = pick_template(workspace.templates, args.brief)
+            template_path = template_info.path
+            catalog_dir = Path.cwd() / ".powergen_catalog"
+            catalog_path = catalog_dir / (template_path.stem + ".catalog.json")
+            if not catalog_path.exists():
+                print(
+                    f"Error: catalog not found for '{template_path.name}'.\n"
+                    "Run 'powergen catalog' first.",
+                    file=sys.stderr,
+                )
+                return 1
+            distill_dir = Path.cwd() / ".powergen_distill"
+            print(f"Template: {template_path.name}")
+            print("[1/2] Planning slide content…")
+            plan = run_catalog_plan(
+                brief=args.brief,
+                catalog_path=catalog_path,
+                client=client,
+                distill_dir=distill_dir if distill_dir.exists() else None,
+            )
+            print(f"      {len(plan)} slide(s) planned.")
+            if args.plan_only:
+                import json as _json
+                print(_json.dumps(plan, indent=2, ensure_ascii=False))
+                return 0
+            print("[2/2] Filling template…")
+            output_path = Path(args.output) if args.output else None
+            if output_path is None:
+                output_path = template_path.parent / (template_path.stem + "-filled.pptx")
+            out = fill_from_plan(
+                plan=plan,
+                template_path=template_path,
+                catalog_path=catalog_path,
+                output_path=output_path,
+            )
+            print(f"\nDone: {out}")
 
         elif args.cmd == "catalog":
             from .catalog import run_catalog
