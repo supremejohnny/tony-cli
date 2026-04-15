@@ -42,3 +42,6 @@ note.txt
 
 #.powergen User chat history
 .powergen/
+.powergen_distill/
+
+test/
