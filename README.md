@@ -1,1 +1,1 @@
-# Feel the power of Tony CLI and Powergen CLI(under development)
+# Make CLI great again
