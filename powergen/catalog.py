@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .workspace import WorkspaceContext
 
 from .prompts_catalog import catalog_system_prompt, catalog_user_prompt
+from .theme_extractor import extract_theme_tokens
 
 # Only template PPTX files are cataloged
 _PPTX_EXT = ".pptx"
@@ -65,6 +66,47 @@ def _format_slides_for_prompt(path: Path) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Programmatic shape-name extraction (for validation)
+# ---------------------------------------------------------------------------
+
+def _collect_valid_shape_names(path: Path) -> dict[int, set[str]]:
+    """Return {1-based slide number → set of actual shape names} from the PPTX."""
+    from pptx import Presentation  # type: ignore[import]
+
+    prs = Presentation(str(path))
+    return {
+        i: {shape.name for shape in slide.shapes}
+        for i, slide in enumerate(prs.slides, 1)
+    }
+
+
+def _validate_catalog_slots(
+    patterns: list[dict],
+    valid_names: dict[int, set[str]],
+) -> list[dict]:
+    """Drop any slot whose shape_name does not exist on the declared source_slide.
+
+    Prints a warning for each dropped slot so the user can diagnose prompt issues.
+    """
+    for p in patterns:
+        src = p.get("source_slide", 0)
+        allowed = valid_names.get(src, set())
+        good: list[dict] = []
+        for slot in p.get("slots", []):
+            sn = slot.get("shape_name", "")
+            if sn in allowed:
+                good.append(slot)
+            else:
+                pid = p.get("slide_id") or p.get("pattern_id") or f"slide_{src}"
+                print(
+                    f"  [catalog] slide {src} ({pid}): shape {sn!r} not found — slot dropped. "
+                    f"Valid names: {sorted(allowed)}"
+                )
+        p["slots"] = good
+    return patterns
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +174,38 @@ def _is_current(catalog_path: Path, file_hash: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Schema normalization
+# Schema normalization + deduplication
 # ---------------------------------------------------------------------------
+
+def _deduplicate_patterns(patterns: list[dict]) -> list[dict]:
+    """Merge patterns whose slots share an identical set of shape_name values.
+
+    Keeps the entry with the lowest source_slide as the canonical pattern,
+    sets reusable=True, and unions fit_for / not_fit_for across the group.
+    Patterns with no slots (or empty slot lists) are kept as-is.
+    """
+    seen: dict[frozenset, int] = {}   # shape_name_set → index in result
+    result: list[dict] = []
+
+    for p in patterns:
+        shape_key = frozenset(s.get("shape_name", "") for s in p.get("slots", []) if s.get("shape_name"))
+        if not shape_key:
+            result.append(p)
+            continue
+
+        if shape_key in seen:
+            existing = result[seen[shape_key]]
+            # Union fit_for / not_fit_for (preserve order, remove exact dupes)
+            for field in ("fit_for", "not_fit_for"):
+                merged = list(dict.fromkeys(existing.get(field, []) + p.get(field, [])))
+                existing[field] = merged
+            existing["reusable"] = True
+        else:
+            seen[shape_key] = len(result)
+            result.append(p)
+
+    return result
+
 
 def _normalize_pattern(p: dict, slide_number: int) -> dict:
     """Ensure consistent field names regardless of what the model output."""
@@ -146,30 +218,89 @@ def _normalize_pattern(p: dict, slide_number: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Catalog readers (two-layer: summary vs full)
+# Catalog readers
 # ---------------------------------------------------------------------------
 
 _SUMMARY_KEYS = {"pattern_id", "source_slide", "description", "fit_for", "not_fit_for", "reusable"}
+_SLOT_SUMMARY_KEYS = {"name", "content_type"}
 
 
 def load_catalog_summary(catalog_path: Path) -> list[dict]:
-    """Return patterns with slots stripped — used by Phase 2 planner for pattern selection.
+    """Return patterns with slim slot info — used by Phase 2 planner (legacy v2 path).
 
-    Sending only ~5 fields per pattern instead of full slot lists can cut Phase 2
-    input tokens by 60–80 % on complex templates.
+    Kept for backward compat with the `generate` command and any external callers.
+    New code should use load_catalog_for_planner().
     """
     data = json.loads(catalog_path.read_text(encoding="utf-8"))
-    return [
-        {k: v for k, v in p.items() if k in _SUMMARY_KEYS}
-        for p in data.get("patterns", [])
-    ]
+    result = []
+    for p in data.get("patterns", []):
+        entry = {k: v for k, v in p.items() if k in _SUMMARY_KEYS}
+        entry["slots"] = [
+            {k: v for k, v in s.items() if k in _SLOT_SUMMARY_KEYS}
+            for s in p.get("slots", [])
+        ]
+        result.append(entry)
+    return result
+
+
+def load_catalog_for_planner(catalog_path: Path) -> dict:
+    """Return a slim view for the fill pipeline planner (v3).
+
+    Returns::
+
+        {
+          "special_slides": [{"slide_id": str, "source_slide": int, "slots": [...slim...]}],
+          "patterns":       [{"pattern_id": str, "source_slide": int, "reusable": bool,
+                               "description": str, "fit_for": [...], "slots": [...slim...]}],
+        }
+
+    Slim slots include only ``name`` and ``content_type`` (drops shape_name / max_chars
+    to keep token cost low for the planner).
+
+    Falls back gracefully for v2 catalogs (only special_slides, no patterns).
+    """
+    data = json.loads(catalog_path.read_text(encoding="utf-8"))
+
+    version = data.get("version", "2.0")
+    if version == "2.0":
+        print(
+            "  [fill] Warning: catalog is v2.0 (no reusable patterns). "
+            "Run 'powergen catalog --force' to upgrade to v3."
+        )
+
+    specials = []
+    for s in data.get("special_slides", []):
+        specials.append({
+            "slide_id": s.get("slide_id", ""),
+            "source_slide": s["source_slide"],
+            "slots": [
+                {"name": sl["name"], "content_type": sl["content_type"]}
+                for sl in s.get("slots", [])
+            ],
+        })
+
+    patterns = []
+    for p in data.get("patterns", []):
+        patterns.append({
+            "pattern_id": p.get("pattern_id", ""),
+            "source_slide": p["source_slide"],
+            "reusable": p.get("reusable", True),
+            "description": p.get("description", ""),
+            "fit_for": p.get("fit_for", []),
+            "slots": [
+                {"name": sl["name"], "content_type": sl["content_type"]}
+                for sl in p.get("slots", [])
+            ],
+        })
+
+    return {"special_slides": specials, "patterns": patterns}
 
 
 _SLOT_KEYS = {"shape_name", "name", "content_type", "max_chars"}
 
 
 def load_catalog_slots(catalog_path: Path, pattern_ids: list[str]) -> list[dict]:
-    """Return full slot details for *pattern_ids* only — used by Phase 3 filler.
+    """Return full slot details for *pattern_ids* only — used by Phase 3 filler (legacy).
 
     Only the patterns the planner selected are loaded, and slot descriptions are
     stripped (shape_name / name / content_type / max_chars are sufficient for filling).
@@ -187,26 +318,108 @@ def load_catalog_slots(catalog_path: Path, pattern_ids: list[str]) -> list[dict]
 
 
 # ---------------------------------------------------------------------------
-# Core extraction
+# v2/v3 catalog readers (used by dynamic_renderer and generate command)
+# ---------------------------------------------------------------------------
+
+def load_special_slides_meta(catalog_path: Path) -> dict[str, dict]:
+    """Return {slide_id: {"source_slide": int, "slots": {name: slot_dict}}}
+
+    Used by dynamic_renderer to locate special slides and fill their slots.
+    Works for both v2 and v3 catalogs.
+    """
+    data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    result: dict[str, dict] = {}
+    for s in data.get("special_slides", []):
+        slide_id = s.get("slide_id", "")
+        if not slide_id:
+            continue
+        result[slide_id] = {
+            "source_slide": s["source_slide"],
+            "slots": {slot["name"]: slot for slot in s.get("slots", [])},
+        }
+    return result
+
+
+def load_catalog_theme(catalog_path: Path) -> dict:
+    """Return the theme tokens dict from a v2/v3 catalog."""
+    data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    return data.get("theme", {})
+
+
+def load_available_special_slide_ids(catalog_path: Path) -> list[str]:
+    """Return sorted list of slide_id values from a v2/v3 catalog."""
+    data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    return sorted(s["slide_id"] for s in data.get("special_slides", []) if s.get("slide_id"))
+
+
+# ---------------------------------------------------------------------------
+# Core extraction (v3)
 # ---------------------------------------------------------------------------
 
 def extract_catalog(path: Path, client: "LLMClient") -> dict:
-    """Analyze a template PPTX and return its Pattern Catalog as a dict."""
+    """Analyze a template PPTX and return its Catalog (v3) as a dict.
+
+    v3 schema:
+      - ``theme``          — visual tokens extracted without LLM
+      - ``special_slides`` — reusable=False slides (cover, profile, etc.) with slots
+      - ``patterns``       — reusable=True slides (section headers, card layouts, etc.)
+
+    Shape-name validation: all slot shape_names are cross-checked against
+    programmatically extracted shape names. Invalid names are dropped with a warning.
+    """
     slides_repr = _format_slides_for_prompt(path)
     raw = client.generate(catalog_system_prompt(), catalog_user_prompt(path.name, slides_repr))
     patterns = _parse_catalog_response(raw, path.name)
 
-    # Normalize field names regardless of model output variance
+    # Normalize: ensure source_slide field exists
     patterns = [_normalize_pattern(p, i + 1) for i, p in enumerate(patterns)]
 
+    # Validate shape names against real PPTX (critical fix for hallucination)
+    valid_names = _collect_valid_shape_names(path)
+    patterns = _validate_catalog_slots(patterns, valid_names)
+
+    # Split into special_slides (reusable=False with slide_id) and
+    # reusable patterns (reusable=True with pattern_id)
+    special_slides: list[dict] = []
+    reusable_patterns: list[dict] = []
+
+    for p in patterns:
+        is_reusable = p.get("reusable", True)
+
+        if not is_reusable:
+            # Special or keep slide
+            entry: dict = {
+                "source_slide": p["source_slide"],
+                "slide_id": p.get("slide_id") or p.get("pattern_id", f"special_{p['source_slide']:02d}"),
+                "slots": p.get("slots", []),
+            }
+            special_slides.append(entry)
+        else:
+            entry = {
+                "pattern_id": p.get("pattern_id", f"pattern_{p['source_slide']:02d}"),
+                "source_slide": p["source_slide"],
+                "reusable": True,
+                "description": p.get("description", ""),
+                "fit_for": p.get("fit_for", []),
+                "slots": p.get("slots", []),
+            }
+            reusable_patterns.append(entry)
+
+    # Deduplicate reusable patterns with identical slot shapes
+    reusable_patterns = _deduplicate_patterns(reusable_patterns)
+
+    theme = extract_theme_tokens(path)
+
     return {
-        "version": "1.0",
+        "version": "3.0",
         "source": {
             "file_name": path.name,
             "file_hash": _compute_file_hash(path),
             "analyzed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
-        "patterns": patterns,
+        "theme": theme,
+        "special_slides": special_slides,
+        "patterns": reusable_patterns,
     }
 
 

@@ -76,6 +76,9 @@ def scan_workspace(root: Path | None = None) -> WorkspaceContext:
         size = p.stat().st_size
 
         if ext in _TEMPLATE_EXTS:
+            # Exclude powergen output files from being treated as templates
+            if p.stem.endswith(("-filled", "-generated")):
+                continue
             layouts = _extract_layouts(p)
             ctx.templates.append(TemplateInfo(path=p, layouts=layouts))
         elif ext in _CONTENT_EXTS:

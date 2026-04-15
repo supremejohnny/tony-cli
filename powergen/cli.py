@@ -76,6 +76,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Output .pptx path (default: <template>-filled.pptx)",
     )
     fill_p.add_argument(
+        "--template", "-t",
+        default=None,
+        metavar="FILE",
+        help="Explicit template .pptx path (overrides auto-selection)",
+    )
+    fill_p.add_argument(
         "--plan-only",
         action="store_true",
         help="Print the content plan JSON and exit without writing a .pptx",
@@ -92,6 +98,20 @@ def main(argv: list[str] | None = None) -> int:
         default="claude-haiku-4-5-20251001",
         metavar="MODEL",
         help="Model for catalog analysis (default: claude-haiku-4-5-20251001)",
+    )
+
+    generate_p = sub.add_parser("generate", help="Generate a presentation from typed slide plan + template decoration")
+    generate_p.add_argument("brief", help="Description of the content to generate")
+    generate_p.add_argument(
+        "--output", "-o",
+        default=None,
+        metavar="FILE",
+        help="Output .pptx path (default: <template>-generated.pptx)",
+    )
+    generate_p.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="Print the typed slide plan JSON and exit without writing a .pptx",
     )
 
     sub.add_parser("status", help="Show current project stage")
@@ -189,12 +209,18 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "fill":
             from .catalog_planner import run_catalog_plan
             from .catalog_filler import fill_from_plan
-            if not workspace.templates:
-                print("Error: no .pptx template found in the working directory.", file=sys.stderr)
-                return 1
-            from .template_filler import pick_template
-            template_info = pick_template(workspace.templates, args.brief)
-            template_path = template_info.path
+            if args.template:
+                template_path = Path(args.template)
+                if not template_path.exists():
+                    print(f"Error: template not found: {args.template}", file=sys.stderr)
+                    return 1
+            else:
+                if not workspace.templates:
+                    print("Error: no .pptx template found in the working directory.", file=sys.stderr)
+                    return 1
+                from .template_filler import pick_template
+                template_info = pick_template(workspace.templates, args.brief)
+                template_path = template_info.path
             catalog_dir = Path.cwd() / ".powergen_catalog"
             catalog_path = catalog_dir / (template_path.stem + ".catalog.json")
             if not catalog_path.exists():
@@ -235,6 +261,54 @@ def main(argv: list[str] | None = None) -> int:
             catalog_client = make_llm_client(mock=args.mock, model=args.model)
             catalog_dir = Path.cwd() / ".powergen_catalog"
             run_catalog(workspace, catalog_client, catalog_dir, force=getattr(args, "force", False))
+
+        elif args.cmd == "generate":
+            from .catalog import run_catalog
+            from .content_generator import run_content_plan
+            from .dynamic_renderer import render_typed_plan
+            from .template_filler import pick_template
+            if not workspace.templates:
+                print("Error: no .pptx template found in the working directory.", file=sys.stderr)
+                return 1
+            template_info = pick_template(workspace.templates, args.brief)
+            template_path = template_info.path
+            catalog_dir = Path.cwd() / ".powergen_catalog"
+            catalog_path = catalog_dir / (template_path.stem + ".catalog.json")
+
+            # Auto-run catalog if missing or stale
+            if not catalog_path.exists():
+                print(f"[0/3] Catalog not found — running catalog for '{template_path.name}'...")
+                catalog_client = make_llm_client(mock=args.mock, model="claude-haiku-4-5-20251001")
+                run_catalog(workspace, catalog_client, catalog_dir)
+
+            distill_dir = Path.cwd() / ".powergen_distill"
+            print(f"Template: {template_path.name}")
+            print("[1/3] Loading template metadata...")
+            print("[2/3] Generating typed slide plan...")
+            plan = run_content_plan(
+                brief=args.brief,
+                catalog_path=catalog_path,
+                client=client,
+                distill_dir=distill_dir if distill_dir.exists() else None,
+            )
+            print(f"      {len(plan)} slide(s) planned.")
+            if args.plan_only:
+                import json as _json
+                import sys as _sys
+                out_text = _json.dumps(plan, indent=2, ensure_ascii=False)
+                _sys.stdout.buffer.write((out_text + "\n").encode("utf-8"))
+                return 0
+            print("[3/3] Rendering...")
+            output_path = Path(args.output) if args.output else None
+            if output_path is None:
+                output_path = template_path.parent / (template_path.stem + "-generated.pptx")
+            out = render_typed_plan(
+                plan=plan,
+                template_path=template_path,
+                catalog_path=catalog_path,
+                output_path=output_path,
+            )
+            print(f"\nDone: {out}")
 
         elif args.cmd == "status":
             print(f"Stage: {state.stage.value}")

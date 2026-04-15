@@ -166,6 +166,123 @@ The content mapping call passes the full analysis JSON in `user_prompt`, which c
 
 ---
 
+## Layer 2.5 — Pattern Catalog Pipeline (Implemented, Architecture Under Review)
+
+**Goal**: Replace the fuzzy text-replacement approach of Layer 2 with a structured, slot-aware pipeline that knows the semantic purpose of each shape.
+
+**What was built**
+
+Three-phase pipeline on top of the template PPTX:
+
+1. **Phase 1 — Catalog** (`powergen catalog`): Analyzes a template PPTX and produces a `*.catalog.json` describing each slide as a reusable pattern with named slots (keyed by `shape_name`), `fit_for`/`not_fit_for` metadata, and deduplication of structurally identical slides.
+
+2. **Phase 2 — Planner** (`powergen fill "<brief>" --plan-only`): Given a user brief + distill context, selects which patterns to use and generates slot content — a structured plan JSON.
+
+3. **Phase 3 — Filler** (`powergen fill "<brief>"`): Deep-copies template slides, rewrites text at the `<a:p>` XML level (preserving run formatting), reorders/prunes slides, and saves output.
+
+**Status**: Implemented and API-tested on a real university course-selection template (11 slides → 9 deduplicated patterns). Commits: `b8d9953` (catalog), `cb727b4` (planner + filler).
+
+---
+
+### Open Design Problem: Template-Bound Patterns
+
+**Problem statement**
+
+The current pipeline is entirely **template-bound**: every pattern in the output must correspond to a slide that physically exists in the template PPTX. The Planner can only choose from patterns the Catalog found; the Filler can only write into shapes that already exist on those slides.
+
+This creates a hard constraint: the creative range of the generated output is limited to whatever slide layouts the template author happened to include. A template with 9 patterns can only produce presentations that are remixes of those 9 layouts — even if the content would be better served by a simpler or completely different arrangement.
+
+**Human designer analogy**
+
+A human designer using a branded template does not feel this constraint. They treat the template as a **visual theme** (color palette, typography, background decorations, icon style) and compose slide layouts freely:
+
+- Need a single callout statement? Create a new slide with one large text box, styled to match.
+- Need a two-column comparison? Build it from scratch using the template's colors and fonts.
+- Need a numbered list with icons? Arrange shapes manually — no equivalent slide needs to exist in the template.
+
+Only a handful of slides (cover, section dividers, bio page) are truly "fixed" and borrowed as-is from the template.
+
+**Implications for the current architecture**
+
+| Current approach | Desired behavior |
+|---|---|
+| Pattern = a full slide copied from template | Pattern = a layout recipe that can be instantiated fresh |
+| Filler writes into pre-existing shapes | Filler creates new shapes with template-derived styling |
+| Visual range = {slides in template} | Visual range = {any layout composable from theme tokens} |
+| Adding a new layout requires editing template PPTX | New layouts emerge from prompt + theme tokens alone |
+
+**What would need to change**
+
+1. **Theme token extraction**: Instead of cataloging slide structures, extract visual primitives from the template — background fills, primary/secondary/accent colors, heading/body font families, sizes, and weights, border/shadow styles used on shapes.
+
+2. **Layout grammar**: Define a small set of abstract layout types (single-hero, two-column, grid-N, timeline, table, cover, section-divider) that the Planner can request by name, independent of what the template contains.
+
+3. **Dynamic shape creation**: The Filler generates new slides from scratch using `python-pptx`, applying theme tokens to newly created shapes rather than writing into pre-existing ones.
+
+4. **Template = style source, not structure source**: The template PPTX is consulted only to extract visual style; its slide structure is ignored for generation purposes (though it could still be used for a few "fixed" slides like the cover).
+
+**Discussion deferred**: This is a significant architectural rethink. The current Phase 1–3 implementation remains as a reference and proof-of-concept for the slot-filling mechanics. The theme-token + dynamic-layout approach will be designed separately before implementation begins.
+
+---
+
+### Attempt: `generate` command — Typed Content + Canvas Cloning (Implemented, Unsatisfactory)
+
+**Goal**: Decouple content generation from template structure. Claude generates a typed slide plan using a fixed 7-type vocabulary; a dynamic renderer creates slides from scratch decorated with the template's visual identity.
+
+**What was built** (commits on `dev/powergen`)
+
+- `powergen/content_generator.py` + `prompts_content_generator.py`: Claude generates a typed plan (`title`, `section_divider`, `content_simple`, `content_structured`, `two_column`, `timeline`, `special`). Prompt includes pptx-skill design rules (layout variety, content_structured variant selection, etc.).
+- `powergen/theme_extractor.py`: Extracts theme tokens (`bg_color`, `accent_color`, `heading_font`, `body_font`) directly from `ppt/theme/theme*.xml` inside the PPTX ZIP — avoids heuristic shape scanning which silently returns defaults when shapes use theme color references.
+- `powergen/dynamic_renderer.py`: For each generic slide, clones a template content slide as a "visual canvas" (copies decorative shapes + background, removes all text-bearing shapes), then places text boxes on top. Special slides (title, profile) are taken from template and slot-filled as before. `_reorder_slides` handles final ordering.
+- Catalog simplified to v2 schema: `theme` + `special_slides` (reusable:false only). Old `fill` command preserved.
+
+**What works**
+- Content generation quality is good: diverse slide types, design rules followed, correct language.
+- Theme token extraction is reliable (fixed from heuristic to XML-based).
+- Special slides (title) are correctly taken from the template and filled.
+- Template's decorative shapes (logo, colored bars, dot patterns) do appear on generated slides after the canvas cloning fix.
+
+**What doesn't work — the fundamental problem**
+
+The canvas cloning approach exposed a mismatch that cannot be resolved with the current architecture:
+
+> **The template's decorative shapes occupy specific zones of the slide. Our text boxes are placed at hardcoded coordinates. These two systems have no awareness of each other.**
+
+Concrete failure modes observed:
+
+1. **Coordinate blindness**: A template may have a colored header bar at `top=0, height=1.2"` and a content area below. Our title text box is placed at `MARGIN=0.5"` — which lands inside the colored bar and overlaps it correctly by accident. But our content starts at `title_bottom + GAP`, which may collide with a template shape sitting at a fixed y-position.
+
+2. **Section divider visual clash**: `_render_section_divider` explicitly overrides the slide background with a dark color. But the cloned canvas still contains the template's decorative shapes (colored rectangles, images) — these were designed for a light-background content slide, not a dark section divider. Result: wrong visual combination.
+
+3. **No content safe zone**: We don't know where on the cloned slide it's safe to write. The template may have a footer strip, a side margin decoration, or a full-bleed image that consumes areas we're writing into.
+
+4. **Font/size mismatch**: Our hardcoded font sizes (40pt title, 15pt body) may not match the template's visual rhythm. A template designed with 28pt titles and tight line spacing will look wrong with our 40pt titles.
+
+**Why the problem is harder than it looks**
+
+The root cause is that "template visual identity" is not just a set of tokens (colors, fonts) — it's a **spatial layout**: which zone is the title zone, which zone is the content zone, where the decorations live, and how much space is left for content.
+
+Extracting this spatial layout reliably from an arbitrary PPTX would require:
+- Identifying the "safe content area" on each slide (bounding box not covered by decorative shapes)
+- Understanding which shape is a header vs. footer vs. side decoration
+- Knowing the template's intended font sizes (not just what fonts exist, but what size they used for each role)
+
+This is non-trivial heuristically and likely requires LLM analysis of the template (vision or structured XML interpretation).
+
+**Paths forward (not yet chosen)**
+
+| Option | Description | Trade-offs |
+|---|---|---|
+| A. Spatial layout extraction | LLM or vision analyzes the template's content area, outputs `content_zone: {left, top, width, height}` | Requires LLM pass on template; fragile for complex layouts |
+| B. Use template layouts as named regions | Map slide types to layout names ("blank", "title and content", etc.); use placeholder positions as content zone | Limited to templates with well-named layouts; some templates break this |
+| C. Full visual render (no template canvas) | Abandon template canvas cloning; render purely from theme tokens (color, font) into a blank slide | Loses logo, decorative shapes; output looks generic |
+| D. Render into template placeholders | For each generic slide, pick the best-matching template layout, fill its placeholders | Re-introduces template-bound constraint |
+| E. Hybrid: minimal canvas + injection zones | Catalog explicitly annotates `content_zone` per slide type during catalog phase (LLM + vision); renderer respects these zones | Adds catalog complexity; likely the most correct approach |
+
+**Recommended next design step**: Option E — extend the catalog phase to output a `content_zone` per representative slide, so the renderer knows exactly where to write. This requires one vision/analysis LLM call during `powergen catalog`, producing `{title_zone, body_zone}` in the catalog JSON.
+
+---
+
 ## Layer 3 — Full Visual (Future)
 
 **Goal**: Presentation-ready output requiring 1-2 steps of human polish at most.

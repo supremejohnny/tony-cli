@@ -1,0 +1,58 @@
+{
+  "version": "2.0",
+  "source": {
+    "file_name": "test.pptx",
+    "file_hash": "sha256:f7c95f6445545df7a0b56390620f31c9eda875ee7919eaae40fc40daba3aad97",
+    "analyzed_at": "2026-04-10T20:20:56Z"
+  },
+  "theme": {
+    "bg_color": "#FFFFFF",
+    "accent_color": "#2E75B6",
+    "heading_font": "Calibri",
+    "body_font": "Calibri"
+  },
+  "special_slides": [
+    {
+      "source_slide": 1,
+      "slide_id": "title",
+      "slots": [
+        {
+          "name": "title",
+          "shape_name": "文本占位符 48",
+          "content_type": "text",
+          "max_chars": 60
+        },
+        {
+          "name": "subtitle",
+          "shape_name": "文本框 10",
+          "content_type": "text",
+          "max_chars": 100
+        }
+      ]
+    },
+    {
+      "source_slide": 3,
+      "slide_id": "profile",
+      "slots": [
+        {
+          "name": "name",
+          "shape_name": "文本框 20",
+          "content_type": "text",
+          "max_chars": 30
+        },
+        {
+          "name": "credentials",
+          "shape_name": "文本框 21",
+          "content_type": "text",
+          "max_chars": 80
+        },
+        {
+          "name": "bio",
+          "shape_name": "文本框 22",
+          "content_type": "bullets",
+          "max_chars": 200
+        }
+      ]
+    }
+  ]
+}

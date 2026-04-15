@@ -300,6 +300,158 @@ _MOCK_PLAN_CATALOG_JSON = """[
   }
 ]"""
 
+_MOCK_CATALOG_V2_JSON = """[
+  {
+    "source_slide": 1,
+    "slide_id": "title",
+    "reusable": false,
+    "slots": [
+      {"name": "title",    "shape_name": "文本占位符 48", "content_type": "text", "max_chars": 60},
+      {"name": "subtitle", "shape_name": "文本框 10",     "content_type": "text", "max_chars": 100}
+    ]
+  },
+  {
+    "source_slide": 3,
+    "slide_id": "profile",
+    "reusable": false,
+    "slots": [
+      {"name": "name",        "shape_name": "文本框 20", "content_type": "text",    "max_chars": 30},
+      {"name": "credentials", "shape_name": "文本框 21", "content_type": "text",    "max_chars": 80},
+      {"name": "bio",         "shape_name": "文本框 22", "content_type": "bullets", "max_chars": 200}
+    ]
+  }
+]"""
+
+# ---------------------------------------------------------------------------
+# v3 mock responses (fill command — catalog + plan)
+# ---------------------------------------------------------------------------
+# Shape names verified against test/test.pptx:
+#   Slide 1: 'Title 2', 'TextBox 15' (×2), '文本框 8'
+#   Slide 2: '文本占位符 48', '文本框 10', '文本框 15', '文本框 20', '文本框 27'
+#   Slide 3: '文本框 10', '文本框 1'  (section header layout)
+
+_MOCK_CATALOG_V3_JSON = """[
+  {
+    "source_slide": 1,
+    "slide_id": "title",
+    "reusable": false,
+    "description": "Cover slide with university, student/advisor info, and course description",
+    "slots": [
+      {"name": "university_program",    "shape_name": "Title 2",    "content_type": "text",    "max_chars": 80},
+      {"name": "student_advisor_info",  "shape_name": "TextBox 15", "content_type": "bullets", "max_chars": 120},
+      {"name": "course_description",    "shape_name": "\\u6587\\u672c\\u6846 8",  "content_type": "text", "max_chars": 40}
+    ]
+  },
+  {
+    "source_slide": 2,
+    "slide_id": "profile",
+    "reusable": false,
+    "description": "Advisor profile with name, affiliation, credentials, and bio",
+    "slots": [
+      {"name": "name",        "shape_name": "\\u6587\\u672c\\u5360\\u4f4d\\u7b26 48", "content_type": "text",    "max_chars": 30},
+      {"name": "affiliation", "shape_name": "\\u6587\\u672c\\u6846 10",              "content_type": "text",    "max_chars": 80},
+      {"name": "credentials", "shape_name": "\\u6587\\u672c\\u6846 15",              "content_type": "text",    "max_chars": 150},
+      {"name": "bio",         "shape_name": "\\u6587\\u672c\\u6846 20",              "content_type": "bullets", "max_chars": 250}
+    ]
+  },
+  {
+    "source_slide": 3,
+    "pattern_id": "section_header",
+    "reusable": true,
+    "description": "Section divider with title and subtitle",
+    "fit_for": ["chapter breaks", "section intros", "topic transitions"],
+    "slots": [
+      {"name": "section_title",    "shape_name": "\\u6587\\u672c\\u6846 10", "content_type": "text", "max_chars": 40},
+      {"name": "section_subtitle", "shape_name": "\\u6587\\u672c\\u6846 1",  "content_type": "text", "max_chars": 80}
+    ]
+  },
+  {
+    "source_slide": 4,
+    "pattern_id": "keep_04",
+    "reusable": false,
+    "description": "Numbered two-card layout — course selection GPA requirements (generic, keep as-is)",
+    "slots": []
+  },
+  {
+    "source_slide": 5,
+    "pattern_id": "keep_05",
+    "reusable": false,
+    "description": "Numbered four-card layout — retake rules and costs (generic, keep as-is)",
+    "slots": []
+  }
+]"""
+
+_MOCK_PLAN_V3_JSON = """[
+  {
+    "op": "fill_special",
+    "slide_id": "title",
+    "slots": {
+      "university_program": "University of Toronto Mississauga\\nComputer Science Program",
+      "student_advisor_info": "\\u8def\\u89c5\\u5b66\\u751f\\uff1a[ 2026\\u7ea7\\uff0cEthan ]\\n\\u8def\\u89c5\\u5bfc\\u5e08\\uff1a[ Johnny ]",
+      "course_description": "CSC 162 \\u8bfe\\u7a0b\\u9009\\u8bfe\\u89c4\\u5212"
+    }
+  },
+  {
+    "op": "fill_special",
+    "slide_id": "profile",
+    "slots": {
+      "name": "Johnny Gan",
+      "affiliation": "University of Toronto, Canada\\n\\u8ba1\\u7b97\\u673a\\u79d1\\u5b66\\u7855\\u58eb",
+      "credentials": "Undergraduate GPA 3.8/4.0 | 6 years academic experience with Computer related courses",
+      "bio": "Systems programming enthusiast\\nTA for CSC 108 and CSC 148\\nExpertise in data structures and algorithms"
+    }
+  },
+  {"op": "keep", "source_slide": 3},
+  {"op": "keep", "source_slide": 4},
+  {"op": "keep", "source_slide": 5},
+  {
+    "op": "clone_pattern",
+    "pattern_id": "section_header",
+    "slots": {
+      "section_title": "CSC 162 \\u8bfe\\u7a0b\\u89c4\\u5212",
+      "section_subtitle": "\\u672c\\u5b66\\u671f\\u5fc5\\u4fee\\u8bfe\\u7a0b\\u53ca\\u5b66\\u4e60\\u5efa\\u8bae"
+    }
+  },
+  {
+    "op": "clone_pattern",
+    "pattern_id": "section_header",
+    "slots": {
+      "section_title": "\\u65f6\\u95f4\\u7ebf",
+      "section_subtitle": "Key milestones and deadlines"
+    }
+  }
+]"""
+
+_MOCK_GENERATE_PLAN_JSON = """[
+  {"type": "title", "special_slide": "title", "slots": {"title": "大学选课指南", "subtitle": "帮助新生规划最优学习路径"}},
+  {"type": "section_divider", "title": "第一章：选课基础规则"},
+  {"type": "content_structured", "title": "选课数量限制", "points": [
+    {"title": "最低选课数量", "desc": "每学期至少选修12学分，低于此数视为非全日制"},
+    {"title": "最高选课数量", "desc": "每学期最多选修20学分，超出需系主任批准"}
+  ]},
+  {"type": "content_simple", "title": "选课流程要点", "bullets": [
+    "选课前查阅培养方案，确认学分要求",
+    "优先选修必修课和先修课程",
+    "选修课在满足必修后再行安排",
+    "注意选课截止日期，逾期无法更改"
+  ]},
+  {"type": "section_divider", "title": "第二章：进阶策略"},
+  {"type": "two_column", "title": "课程选择策略对比", "left": {
+    "heading": "稳健型选课",
+    "bullets": ["每学期14-16学分", "避免同期多门高难度课", "留出时间参加实习"]
+  }, "right": {
+    "heading": "快速型选课",
+    "bullets": ["每学期18-20学分", "适合学习能力强的学生", "注意不要过度负担"]
+  }},
+  {"type": "timeline", "title": "大一选课时间轴", "steps": [
+    {"label": "入学前", "desc": "阅读培养方案，了解必修课列表"},
+    {"label": "第1-2周", "desc": "参加选课说明会，咨询学长学姐"},
+    {"label": "第3周", "desc": "提交第一志愿选课申请"},
+    {"label": "第4周", "desc": "确认选课结果，处理冲突"}
+  ]},
+  {"type": "special", "special_slide": "profile", "slots": {"name": "学业顾问", "credentials": "教务处选课指导专员", "bio": "协助学生规划四年课程\\n熟悉各院系课程要求\\n定期举办选课工作坊"}}
+]"""
+
 _MOCK_CATALOG_JSON = """[
   {
     "pattern_id": "tutor_intro_01",
@@ -378,9 +530,19 @@ class MockLLMClient:
         # contains the full analysis JSON (with "text_nodes"), which would
         # cause a false match if we checked combined.
         sp = system_prompt.lower()
-        if "template structure analyzer" in sp:
+        # v3 catalog: "three roles: special, reusable, or keep" is unique to v3 prompt
+        if "three roles: special, reusable, or keep" in sp:
+            return _MOCK_CATALOG_V3_JSON
+        # v3 planner: "presentation content planner" + "fill_special" op type
+        if "presentation content planner" in sp and "fill_special" in sp:
+            return _MOCK_PLAN_V3_JSON
+        if "template structure analyzer" in sp:    # old catalog (fill command)
             return _MOCK_CATALOG_JSON
-        if "presentation content planner" in sp:
+        if "template analyzer" in sp:              # new catalog v2 (generate command)
+            return _MOCK_CATALOG_V2_JSON
+        if "slide content planner" in sp:          # new content generator (generate command)
+            return _MOCK_GENERATE_PLAN_JSON
+        if "presentation content planner" in sp:   # old catalog planner (fill command)
             return _MOCK_PLAN_CATALOG_JSON
         if "presentation analyst" in sp:
             return _MOCK_TEMPLATE_ANALYSIS_JSON

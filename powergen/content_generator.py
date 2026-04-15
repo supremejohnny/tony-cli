@@ -8,16 +8,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .mock_client import LLMClient
 
-from .catalog import load_catalog_for_planner
-from .prompts_catalog_planner import planner_system_prompt, planner_user_prompt
+from .catalog import load_available_special_slide_ids
+from .prompts_content_generator import generator_system_prompt, generator_user_prompt
 
 
 # ---------------------------------------------------------------------------
-# Distill context loader
+# Distill context loader (same logic as catalog_planner)
 # ---------------------------------------------------------------------------
 
 def _load_distill_context(distill_dir: Path) -> str:
-    """Produce a compact text summary from all distill files for LLM context."""
     if not distill_dir.exists():
         return ""
     parts: list[str] = []
@@ -46,10 +45,8 @@ def _load_distill_context(distill_dir: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def _parse_plan_response(raw: str) -> list[dict]:
-    """Extract a JSON array from the LLM response with 3-step fallback."""
     text = raw.strip()
 
-    # Step 1: direct parse
     try:
         result = json.loads(text)
         if isinstance(result, list):
@@ -57,7 +54,6 @@ def _parse_plan_response(raw: str) -> list[dict]:
     except json.JSONDecodeError:
         pass
 
-    # Step 2: ```json [...] ``` fence
     m = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
     if m:
         try:
@@ -67,7 +63,6 @@ def _parse_plan_response(raw: str) -> list[dict]:
         except json.JSONDecodeError:
             pass
 
-    # Step 3: first bare [ ... ] block
     m = re.search(r"\[.*\]", text, re.DOTALL)
     if m:
         try:
@@ -78,35 +73,67 @@ def _parse_plan_response(raw: str) -> list[dict]:
             pass
 
     raise ValueError(
-        f"Could not parse plan response as JSON array.\nPreview:\n{raw[:500]}"
+        f"Could not parse content plan as JSON array.\nPreview:\n{raw[:500]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+_VALID_TYPES = {
+    "title", "section_divider", "content_simple",
+    "content_structured", "two_column", "timeline", "special",
+}
+
+
+def _validate_plan(plan: list[dict], available_special: list[str]) -> list[dict]:
+    """Drop entries with invalid types or unknown special_slide references.
+    Prints warnings for skipped entries.
+    """
+    special_set = set(available_special)
+    valid: list[dict] = []
+    for entry in plan:
+        t = entry.get("type", "")
+        if t not in _VALID_TYPES:
+            print(f"  Warning: unknown slide type '{t}', skipping.")
+            continue
+        if t in ("title", "special"):
+            sid = entry.get("special_slide", "")
+            if sid not in special_set:
+                print(f"  Warning: special_slide '{sid}' not in template, skipping.")
+                continue
+        valid.append(entry)
+    return valid
 
 
 # ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def run_catalog_plan(
+def run_content_plan(
     brief: str,
     catalog_path: Path,
     client: "LLMClient",
     distill_dir: Path | None = None,
 ) -> list[dict]:
-    """Phase 2: Generate an ordered slide operation plan from catalog + brief.
+    """Generate a typed slide plan from a brief + catalog metadata.
 
-    Returns a list of operation dicts, each one of::
+    Returns a list of slide dicts, e.g.::
 
-        {"op": "fill_special", "slide_id": str, "slots": {slot_name: content, ...}}
-        {"op": "keep",         "source_slide": int}
-        {"op": "clone_pattern","pattern_id": str,  "slots": {slot_name: content, ...}}
-
-    The caller should pass the list to ``fill_from_plan()`` (Phase 3) to
-    produce the output PPTX.
+        [
+          {"type": "title", "special_slide": "title", "slots": {"title": "..."}},
+          {"type": "section_divider", "title": "..."},
+          {"type": "content_structured", "title": "...", "points": [...]},
+        ]
     """
-    catalog_for_planner = load_catalog_for_planner(catalog_path)
+    available_special = load_available_special_slide_ids(catalog_path)
     distill_context = _load_distill_context(distill_dir) if distill_dir is not None else ""
-    raw = client.generate(
-        planner_system_prompt(),
-        planner_user_prompt(brief, catalog_for_planner, distill_context),
-    )
-    return _parse_plan_response(raw)
+
+    sys_prompt = generator_system_prompt(available_special)
+    usr_prompt = generator_user_prompt(brief, available_special, distill_context)
+
+    raw = client.generate(sys_prompt, usr_prompt)
+    plan = _parse_plan_response(raw)
+    plan = _validate_plan(plan, available_special)
+    return plan
