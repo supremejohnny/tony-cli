@@ -58,103 +58,81 @@ Mock returns hardcoded plan/spec JSON. The rendered `.pptx` will be a real file 
 
 ---
 
-## Layer 2 — Template-Based (Complete — initial implementation)
+## ~~Layer 2 — Template-Based / markitdown approach (Abandoned)~~
 
-**Goal**: Template-driven output. Model handles content only; all visual design comes from the template.
+> **Abandoned**: `template_filler.py` and `prompts_template.py` deleted. Root cause: markitdown extracts flat text with no shape identity — duplicate shape names collide, repeating groups cannot be expressed, decoration cannot be distinguished from slots. String-match replacement is fragile and non-deterministic. Replaced by schema-based approach below.
 
-**Use case**: User provides a branded or styled `.pptx` template. Powergen fills in the content. Near-zero design work required from AI.
+~~**Workflow**: markitdown → LLM analysis (slide_relevant + text node classification) → LLM mapping (replacement text) → python-pptx paragraph replacement~~
 
-**Tooling**
-- Library: `python-pptx` (paragraph-level text replacement, preserves run formatting)
-- Model: `claude-haiku-4-5` (task is just text substitution)
-- Content extraction: `markitdown` to read template text structure
-
-**Actual implementation** (differs from original plan)
-
-The original plan used unpack → XML edit → pack. This was replaced with direct `python-pptx` manipulation because:
-- XML approach: text split across multiple `<a:t>` runs → matching fails
-- python-pptx `para.text` concatenates all runs natively → correct matching
-- Eliminated encoding issues and 3-minute XSD validation delays
-
-**Workflow**
-1. Run `markitdown` on template → extract text per slide
-2. LLM call 1 (analysis): classify each slide as `slide_relevant: true/false` and each text node as `title / body / bullet / skip`
-3. LLM call 2 (mapping): for all non-skip nodes on relevant slides, generate replacement text proportional in length to original
-4. Apply mappings via python-pptx: match paragraph text, replace first run, blank remaining runs (preserves visual formatting)
-5. Save output as `<template>-filled.pptx`
-
-**Key features**
-- Fuzzy template selection: when multiple `.pptx` files are in the workspace, difflib matches the user's brief text against template filenames (typo-tolerant, cutoff 0.6)
-- Slide relevance filter: slides marked `slide_relevant: false` (e.g. template instructions, navigation placeholders) are skipped entirely — original content preserved
-- Safety net: even if the LLM generates mappings for irrelevant slides, the code-level filter catches them
-
-**Status**: Complete (initial implementation). Validated with real Haiku API — correct content replacement, visual styles preserved, irrelevant slides untouched.
-
-**Known next steps**
-- `/template-revise "feedback"` command: re-run mapping with original brief + revision feedback appended (stateless, one extra API call)
-- Pass brief to Call 1 (analysis): allows `slide_relevant` decisions to be contextually aware, not just structural; enables per-slide `content_hint` for richer mapping
-- Workspace content utilization: pass summaries of `.md`/`.txt` files in the working directory as reference material for Call 2
-
-**Mock testing (zero tokens)**
-
-```bash
-# CLI mode
-powergen --mock template "your brief"
-```
-
-```
-# REPL mode
-powergen --mock
-/template your brief
-```
-
-Mock returns a 3-slide canned analysis (slide 2 marked `slide_relevant: false`) and a mapping that intentionally includes a slide 2 entry to exercise the safety filter. Expected output:
-
-```
-Template: <your-template>.pptx
-[1/3] Analysing template structure…
-[2/3] Generating content mapping…
-  Skipping slide 2 (not relevant).    ← confirms filter works
-[3/3] Applying replacements…
-  Warning: text not found in slide 1: 'Presentation Title'   ← expected, mock uses fake text
-  Warning: text not found in slide 3: 'Slide Heading'        ← expected
-Done: <your-template>-filled.pptx
-```
-
-The warnings are expected and correct — mock text nodes ("Presentation Title" etc.) won't match any real template content. The important signal is `Skipping slide 2 (not relevant).`
-
-**Important: mock detection uses `system_prompt` only**
-
-The content mapping call passes the full analysis JSON in `user_prompt`, which contains the string `"text_nodes"`. If mock detection checked `combined = system_prompt + user_prompt`, the second call would falsely match the analysis condition and return the wrong JSON (causing `mappings = []` and silent no-op). Detection therefore checks `system_prompt.lower()` only for Layer 2 responses.
+~~**Why it failed**: shape name collisions (`TextBox 15` × 2 on cover), no concept of slot kind (text vs repeating vs optional_hint), LLM sees flat text dump with no structure — output quality is unpredictable and breaks on any template with non-trivial layout.~~
 
 ---
 
-## Future Optimization — XML Pattern Extraction (Token Reduction)
+## Layer 2 — Schema-Based Template Composition (In Progress)
 
-**Idea**: Instead of passing raw XML or full slide text to the LLM, pre-process the template locally to extract a structured schema, then send only the schema.
+**Goal**: Template-driven output with predictable, brand-consistent results. Visual design is fully frozen in the template; the LLM only decides *what content goes where*, not how it looks.
 
-**How it works**
-1. Use `scripts/office/unpack.py` to unpack the `.pptx` into raw XML
-2. Local Python parses the XML and extracts a lightweight schema per slide:
-   - Layout type (title page / two-column / content / blank etc.)
-   - Placeholder types and positions (`ph type`, `ph idx`)
-   - Text hierarchy levels (title / subtitle / bullet depth)
-   - Recurring style patterns (font, size, color groupings)
-3. Send only the schema JSON to the LLM — not the full XML or raw text
-4. LLM fills content against the schema
-5. Use `scripts/office/pack.py` to write content back into XML and repack
+**Use case**: User provides a branded `.pptx` template with a co-located `template.schema.json`. Powergen composes a new deck by cloning reusable slides (filling named slots) and generating variable-content slides (via typed renderers reading design tokens).
 
-**Expected benefit**
-- Token reduction: ~80–90% vs sending full XML
-- This is the scenario where `scripts/` becomes a core pipeline component rather than dead code
-- Pairs naturally with the multi-template merging use case (extract schemas from multiple templates, let LLM decide which sections to take from which)
+**Why different from the abandoned approach**
 
-**Dependencies**
-- Requires `scripts/office/unpack.py` and `pack.py` to be integrated into the main workflow
-- Needs a schema extraction module (new, ~100–150 lines of Python)
-- `scripts/office/validate.py` can then gate the final output for correctness
+| | markitdown (abandoned) | schema-based (new) |
+|---|---|---|
+| Shape identity | flat text, no names | composite locator (`shape_name` + `nth` + `near`) |
+| Slot semantics | none — every text node is equal | typed (`text`, `multiline`, `repeating`, `image`, `optional_hint`) |
+| LLM decision space | open-ended text replacement | pick from N reusables + M content_types, fill named slots |
+| Variable-length content | impossible | `generated_slides` with typed renderers |
+| Brand consistency | depends on LLM | frozen in template + design tokens |
 
-**Status**: Not started. Low priority until Layer 3 is underway, but the schema extraction module could be prototyped independently.
+**Three-actor architecture**
+
+1. **Composer LLM** — reads schema's semantic surface (slide names, slot keys, content_type descriptions), produces a flat `plan.json`. Decides *which* slides and *what* content. Does NOT see colors, fonts, positions.
+2. **Composer code** — deterministic Python. For each plan entry: clones slide from source `.pptx` and fills slots (reusable), or calls renderer with tokens (generated).
+3. **Renderers** — one module per `content_type`. Template-agnostic. Read only `fill` data + design tokens.
+
+**Schema concepts** (see `layer2/SKILL.md` for full spec)
+- `reusable_slides` — slides to clone verbatim and fill (cover, section dividers, mentor profile, card grids)
+- `generated_slides` — variable-length content built from scratch by a renderer (`bullet`, `numbered`, `card`, `flow`, `text_block`)
+- `reuse_tier` — `"pattern"` (generic, reusable across templates) vs `"template_local"` (only in this schema)
+- Slot locators — `shape_name` only → `+ nth` → `+ near {top, left}` (in order of preference)
+- Design tokens — minimal: 1 primary color, 2–4 accents, title font, body font, logo ref
+
+**Tooling**
+- Library: `python-pptx` (slide cloning via raw XML + python-pptx)
+- Model: `claude-haiku-4-5` (Composer LLM call is small: schema surface + user content)
+- Schema: `layer2/schemas/<template>.schema.json` (authored once per template)
+- Validator: `layer2/scripts/validate.py` (checks locators resolve, hex colors valid, content_types registered)
+
+**Deliverables needed**
+
+| File | Purpose | Status |
+|---|---|---|
+| `layer2/SKILL.md` | Schema authoring procedure (6 steps) | Done |
+| `layer2/schemas/test_template.schema.json` | Worked example for `test.pptx` | Done |
+| `layer2/scripts/validate.py` | Schema validator (checks locators, hex, content_types) | Done |
+| `layer2/scripts/inspect_pptx.py` | Dump shape inventory from `.pptx` (Step 1 tool) | **Not started** |
+| `layer2/composer/schema_loader.py` | Load + strip comments from schema JSON | **Not started** |
+| `layer2/composer/slot_resolver.py` | Resolve `shape_name` / `nth` / `near` locators | **Not started** |
+| `layer2/composer/slide_cloner.py` | Clone reusable slide + fill all slot kinds | **Not started** |
+| `layer2/composer/renderers/card.py` | `card` content_type renderer | **Not started** |
+| `layer2/composer/renderers/bullet.py` | `bullet` content_type renderer | **Not started** |
+| `layer2/composer/renderers/flow.py` | `flow` content_type renderer | **Not started** |
+| `layer2/composer/renderers/numbered.py` | `numbered` content_type renderer | **Not started** |
+| CLI: `powergen template` | Re-implement `template` command using schema flow | **Not started** |
+
+**Development order**: inspect_pptx → schema_loader + slot_resolver → slide_cloner → renderers (card first) → CLI integration
+
+**Validation (what exists now)**
+
+```bash
+python -m powergen.layer2.scripts.validate powergen/layer2/schemas/test_template.schema.json
+```
+
+---
+
+## ~~Future Optimization — XML Pattern Extraction (superseded)~~
+
+> **Superseded**: The idea of extracting a lightweight schema from XML at runtime is now captured more rigorously in the static `template.schema.json` approach. Runtime XML extraction is replaced by the one-time `SKILL.md` authoring procedure.
 
 ---
 
@@ -184,11 +162,6 @@ The content mapping call passes the full analysis JSON in `user_prompt`, which c
 4. Execute script → render `.pptx`
 5. QA loop: convert to images → visual inspection → fix → re-verify
 
-**Token strategy**
-- Multiple LLM calls (plan, design spec, code gen, QA)
-- Higher model tier required
-- QA loop may add 1-3 extra calls depending on issues found
-
 **Status**: Not started. Requires Node.js toolchain and pptxgenjs integration.
 
 ---
@@ -198,8 +171,7 @@ The content mapping call passes the full analysis JSON in `user_prompt`, which c
 | Operation | Model | Approx. cost |
 |-----------|-------|-------------|
 | Layer 1 full run (create + approve + render) | Haiku | ~$0.002 |
-| Layer 2 template fill (3-slide template) | Haiku | <$0.001 |
-| Layer 2 template fill (20-slide template) | Haiku | ~$0.01 |
+| Layer 2 schema composition (full deck) | Haiku | ~$0.005–0.02 |
 | Layer 3 full run | Sonnet | ~$0.05–0.20 |
 | **Any layer, `--mock` flag** | none | **$0.00** |
 
@@ -212,7 +184,5 @@ Always use `--mock` for code path verification. Reserve real API calls for valid
 | Layer | Model | Relative Cost | Human Touch Needed | Status |
 |-------|-------|--------------|-------------------|--------|
 | 1 — Scaffold | Haiku | $ | Significant | In progress (~70%) |
-| 2 — Template | Haiku | $ | Minimal | Complete (initial) |
+| 2 — Schema composition | Haiku | $ | Minimal | Schema done, composer not started |
 | 3 — Full Visual | Sonnet | $$$ | 1-2 steps | Not started |
-
-**Development order**: Layer 1 → Layer 2 → Layer 3

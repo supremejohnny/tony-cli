@@ -1,0 +1,293 @@
+{
+  "_README": "This is the worked example for test.pptx. Fields prefixed with _ are documentation comments and should be stripped before validation. Real schemas should not contain _ fields.",
+
+  "schema_version": "1",
+  "template_id": "lumi_course_planning_v1",
+  "source_pptx": "test.pptx",
+  "notes": "First template authored. Primary brand color TBD — designer needs to confirm. Accent colors extracted from slide 5 callouts. Slides 6 and 8 are duplicates of slide 3 with different text; consolidated into the single 'section_intro' reusable rather than three separate entries.",
+
+  "tokens": {
+    "_comment_primary": "Best-guess from the title color in slide 4 (#000) and accent palette. Confirm with designer.",
+    "primary_color": "#1F2937",
+    "accent_colors": ["#7578EC", "#F7B802", "#F18703", "#F35B06"],
+    "_comment_fonts": "size_pt_range gives the renderer headroom to scale down on long content. Title 60-72pt seen on slides 1, 3, 10. Body 12-16pt seen on slides 2, 4, 5.",
+    "title_font": { "name": "default", "size_pt_range": [40, 72] },
+    "body_font": { "name": "default", "size_pt_range": [12, 16] },
+    "logo_image_ref": { "source_slide_index": 3, "shape_name": "图片 20" }
+  },
+
+  "reusable_slides": {
+
+    "cover": {
+      "_comment": "Slide 1. Two TextBox 15 shapes (student + advisor) require nth disambiguation. The big '学期课程解读' on the template becomes a flexible 'semester_label' since generated.pptx repurposed it as 'CSC 162' (course code).",
+      "reuse_tier": "pattern",
+      "_tier_reasoning": "Cover-with-photo + university + student + advisor + big text label is a near-universal pattern across course-planning templates. High reuse, high complexity (logo + decorative shapes + photo positioning that no renderer reproduces from tokens alone).",
+      "source_slide_index": 0,
+      "purpose": "Title cover with university, student, advisor, and a flexible big-text label",
+      "slots": {
+        "university": {
+          "kind": "multiline",
+          "shape_name": "Title 2",
+          "required": true,
+          "default": null,
+          "max_chars": 80
+        },
+        "student_info": {
+          "kind": "text",
+          "shape_name": "TextBox 15",
+          "nth": 0,
+          "required": true,
+          "default": "路觅学生：[ — ]",
+          "max_chars": 40
+        },
+        "advisor_info": {
+          "kind": "text",
+          "shape_name": "TextBox 15",
+          "nth": 1,
+          "required": true,
+          "default": "路觅导师：[ — ]",
+          "max_chars": 40
+        },
+        "semester_label": {
+          "kind": "text",
+          "shape_name": "文本框 8",
+          "required": true,
+          "default": "学期课程解读",
+          "max_chars": 20,
+          "_comment": "Original template uses '学期课程解读' (4 Chinese chars). generated.pptx used 'CSC 162' (7 Latin chars). max_chars set conservatively because font is 72pt — overflow is brutal."
+        }
+      }
+    },
+
+    "mentor_intro": {
+      "_comment": "Slide 2. Mentor name is in a placeholder (44pt, top-right). Bio is 16pt body. The three bullet bodies are visually a list-of-3 but in the template they're separate shapes — modeling as repeating would be over-engineering since the count is fixed at 3 visually-anchored positions. We expose them as 3 named slots instead.",
+      "reuse_tier": "pattern",
+      "_tier_reasoning": "Mentor / instructor / consultant profile pages appear in essentially every advisory PPT template. Photo + name + credentials + bio + achievements is reusable across templates with minor slot adjustment.",
+      "source_slide_index": 1,
+      "purpose": "Mentor profile with credentials, bio, and achievements",
+      "slots": {
+        "mentor_name": {
+          "kind": "text",
+          "shape_name": "文本占位符 48",
+          "required": true,
+          "default": null,
+          "max_chars": 20
+        },
+        "mentor_credentials": {
+          "kind": "multiline",
+          "shape_name": "文本框 10",
+          "required": true,
+          "default": null,
+          "max_chars": 80,
+          "_comment": "Two-line: 'University | Degree'. Use \\n in input."
+        },
+        "mentor_bio": {
+          "kind": "multiline",
+          "shape_name": "文本框 15",
+          "required": true,
+          "default": null,
+          "max_chars": 300
+        },
+        "mentor_achievements": {
+          "kind": "multiline",
+          "shape_name": "文本框 20",
+          "required": true,
+          "default": null,
+          "max_chars": 300,
+          "_comment": "Multi-line achievements. Original separates lines with vertical tab \\v inside a single shape — preserve that on input."
+        }
+      }
+    },
+
+    "section_intro": {
+      "_comment": "Slide 3 (and the same layout reused at slides 6 and 8 with different text). One reusable definition serves all three. Composer LLM picks this slide multiple times with different content.",
+      "reuse_tier": "pattern",
+      "_tier_reasoning": "Used 3 times within this template alone. 'Big section title + one-line subtitle' is a generic pattern.",
+      "source_slide_index": 2,
+      "purpose": "Big-text section opener with a one-line subtitle. Used multiple times per deck.",
+      "slots": {
+        "section_title": {
+          "kind": "text",
+          "shape_name": "文本框 10",
+          "required": true,
+          "default": null,
+          "max_chars": 12,
+          "_comment": "66pt bold. Keep short — overflow wraps awkwardly."
+        },
+        "section_subtitle": {
+          "kind": "text",
+          "shape_name": "文本框 1",
+          "required": true,
+          "default": null,
+          "max_chars": 60
+        }
+      }
+    },
+
+    "numbered_card_grid_v": {
+      "_comment": "Slide 4 in test.pptx (originally named 'red_line_grid_2' — renamed to a generic structural name during Step 1.5 since the layout — 2 vertically stacked numbered cards with title/body/footer — is reusable across templates regardless of the 'red lines' content). Two cards stacked vertically. Two shapes named '文本占位符 9' (numbers '01','02') and two '文本占位符 12' (titles). Used 'repeating' to avoid manual enumeration. stride_y = 4.7 - 2.26 = 2.44 inches between cards.",
+      "reuse_tier": "pattern",
+      "_tier_reasoning": "Even though this layout appears only once in test.pptx, it is the canonical 'paired numbered warning cards' pattern that many course-planning / compliance / advisory templates need. Renamed away from content-specific 'red_line' so it can be selected by the composer for any pair of numbered points.",
+      "source_slide_index": 3,
+      "purpose": "Vertical 2-card grid for paired warnings/rules with number + title + body + footer per card",
+      "slots": {
+        "section_title_zh": {
+          "kind": "text",
+          "shape_name": "标题 7",
+          "nth": 0,
+          "required": true,
+          "default": null,
+          "max_chars": 30
+        },
+        "section_title_en": {
+          "kind": "text",
+          "shape_name": "标题 7",
+          "nth": 1,
+          "required": false,
+          "default": "Course Selection Red Lines",
+          "max_chars": 50
+        },
+        "cards": {
+          "kind": "repeating",
+          "count": 2,
+          "max_count": 2,
+          "anchor_shape": "圆角矩形 8",
+          "stride_y": 2.44,
+          "fields": {
+            "number": { "shape_name": "文本占位符 9", "kind": "text", "required": true, "default": "01", "max_chars": 2 },
+            "title":  { "shape_name": "文本占位符 12", "kind": "multiline", "required": true, "default": null, "max_chars": 30 },
+            "body":   { "shape_name": "文本框 19", "kind": "multiline", "required": true, "default": null, "max_chars": 80, "_comment": "First card uses 文本框 19, second uses 文本框 28 — stride locator handles this by remapping. Renderer must use position-relative resolution within the cloned card, not absolute name." },
+            "footer": { "shape_name": "文本框 5", "kind": "multiline", "required": true, "default": null, "max_chars": 80 }
+          }
+        }
+      }
+    },
+
+    "numbered_card_grid_h": {
+      "_comment": "Slide 5 in test.pptx (originally 'consequence_grid_4' — renamed during Step 1.5 to a generic structural name). Four side-by-side callout cards along a horizontal arrow. Each card has its own accent color hardcoded in the template (matches our tokens.accent_colors). Number badges 01-04 in white on colored callouts.",
+      "reuse_tier": "pattern",
+      "_tier_reasoning": "Horizontal 4-card numbered grid is a generic comparison/categorization layout. Color-per-card via tokens.accent_colors makes it portable to any template with ≥4 accent colors defined.",
+      "source_slide_index": 4,
+      "purpose": "Horizontal 4-card grid for consequences/categories with color-coded number badges",
+      "slots": {
+        "section_title_zh": {
+          "kind": "text",
+          "shape_name": "标题 7",
+          "nth": 0,
+          "required": true,
+          "default": null,
+          "max_chars": 30
+        },
+        "section_title_en": {
+          "kind": "text",
+          "shape_name": "标题 7",
+          "nth": 1,
+          "required": false,
+          "default": "Course Selection Red Lines",
+          "max_chars": 50
+        },
+        "cards": {
+          "kind": "repeating",
+          "count": 4,
+          "max_count": 4,
+          "anchor_shape": "矩形标注 16",
+          "stride_x": 2.47,
+          "_comment": "Horizontal stride: cards at x=2.12, 4.59, 7.05, 9.52. Each card pulls accent color from tokens.accent_colors[index].",
+          "fields": {
+            "number":   { "shape_name": "文本框 36", "kind": "text", "required": true, "default": "01", "max_chars": 2 },
+            "category": { "shape_name": "文本框 14", "kind": "text", "required": true, "default": null, "max_chars": 8, "_comment": "25pt. 4 chars in Chinese fits comfortably." },
+            "body":     { "shape_name": "文本框 27", "kind": "multiline", "required": true, "default": null, "max_chars": 80, "_comment": "12pt. Tight — count chars carefully." }
+          }
+        }
+      }
+    },
+
+    "section_divider": {
+      "_comment": "Slide 10 in test.pptx (also seen at slides 6, 8, 13 in generated.pptx). Number + Chinese title + English subtitle. Distinct from section_intro because it's the more elaborate divider with image, used as the entrance to a major section, not a single content slide intro.",
+      "reuse_tier": "pattern",
+      "_tier_reasoning": "Used 4 times in generated.pptx alone. Numbered chapter divider (01./02./03./04.) is universal across multi-section presentations.",
+      "source_slide_index": 9,
+      "purpose": "Major section divider with numbered marker (01-04 etc.), Chinese title, English subtitle",
+      "slots": {
+        "number": {
+          "kind": "text",
+          "shape_name": "TextBox 4",
+          "required": true,
+          "default": "01.",
+          "max_chars": 4
+        },
+        "title_zh": {
+          "kind": "text",
+          "shape_name": "TextBox 8",
+          "required": true,
+          "default": null,
+          "max_chars": 10,
+          "_comment": "60pt bold. Very tight."
+        },
+        "subtitle_en": {
+          "kind": "text",
+          "shape_name": "TextBox 5",
+          "required": true,
+          "default": null,
+          "max_chars": 40
+        }
+      }
+    },
+
+    "closing_timeline": {
+      "_comment": "Slide 11. The original template includes a hint '老师请介绍选课/换课/drop相关时间线（阅后删除）' which is meant to be deleted by the user. Modeled as optional_hint so if no value is provided, the shape is emptied rather than shipping the instruction.",
+      "reuse_tier": "template_local",
+      "_tier_reasoning": "The decorative timeline graphic (4 grouped shape clusters at specific positions) is specific to this template's visual language. Other templates would have their own closing slide with different decoration. Marked template_local: still useful as a reusable within this schema, but NOT promoted to the cross-template pattern library.",
+      "source_slide_index": 10,
+      "purpose": "Closing slide with timeline graphic and instructor-supplied timeline notes",
+      "slots": {
+        "title": {
+          "kind": "text",
+          "shape_name": "矩形 26",
+          "required": false,
+          "default": "时间线",
+          "max_chars": 10
+        },
+        "timeline_notes": {
+          "kind": "optional_hint",
+          "shape_name": "文本框 1",
+          "required": false,
+          "default": null,
+          "_comment": "If not provided, shape is emptied (NOT left as the original hint text)."
+        }
+      }
+    }
+  },
+
+  "generated_slides": {
+    "_comment": "These describe what content_types this template's renderers can produce. The composer LLM picks one of these when the user's content doesn't match a reusable slide. From generated.pptx, the only G-type used was 'card' (the 3 course slides 9/10/11). Other types declared as available but not exercised yet — confirm before relying on them.",
+
+    "card": {
+      "renderer": "renderers.card",
+      "consumes_tokens": ["primary_color", "accent_colors", "title_font", "body_font", "logo_image_ref"],
+      "max_items": 6,
+      "notes": "One card per slide above 6 items. Used in generated.pptx for 3 course detail slides (CSC207, CSC236, STA256), each card has title + 'Assessment' subsection + 'Key Points' subsection."
+    },
+
+    "flow": {
+      "renderer": "renderers.flow",
+      "consumes_tokens": ["primary_color", "accent_colors", "body_font", "logo_image_ref"],
+      "max_items": 5,
+      "notes": "Horizontal A→B→C arrow chain. Used in generated.pptx for prerequisite chain (slide 12)."
+    },
+
+    "bullet": {
+      "renderer": "renderers.bullet",
+      "consumes_tokens": ["primary_color", "body_font", "logo_image_ref"],
+      "max_items": 8,
+      "notes": "Not yet exercised in any sample. Falls back to two-column layout above 5 items."
+    }
+  },
+
+  "compose_hints": {
+    "section_intro_pairs": [
+      { "intro": "section_intro", "divider": "section_divider" }
+    ],
+    "ordering_rule": "Conventional order: cover → mentor_intro → (section_divider → section_intro → content slides)* → closing_timeline. The composer should keep section_divider and its following section_intro adjacent."
+  }
+}

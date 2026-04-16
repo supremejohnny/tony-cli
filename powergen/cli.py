@@ -40,14 +40,8 @@ def main(argv: list[str] | None = None) -> int:
         help="Output .pptx path (default: <title>.pptx in current directory)",
     )
 
-    template_p = sub.add_parser("template", help="Fill a .pptx template with AI-generated content")
-    template_p.add_argument("brief", help="Description of the content to generate")
-    template_p.add_argument(
-        "--output", "-o",
-        default=None,
-        metavar="FILE",
-        help="Output .pptx path (default: <template>-filled.pptx)",
-    )
+    # TODO Layer 2: "template" command will be re-added here once
+    # layer2/composer/ is implemented (schema-based slot filling).
 
     sub.add_parser("status", help="Show current project stage")
     sub.add_parser("reset", help="Reset project state to INIT")
@@ -106,27 +100,6 @@ def main(argv: list[str] | None = None) -> int:
             out = render_presentation(state.spec, output_path=output_path, template_path=template_path)
             state.advance_to_rendered(str(out))
             print(f"\nRendered: {out}")
-
-        elif args.cmd == "template":
-            from .template_filler import fill_template, pick_template
-            if not workspace.templates:
-                print("Error: no .pptx template found in the working directory.", file=sys.stderr)
-                return 1
-            template_info = pick_template(workspace.templates, args.brief)
-            template_path = template_info.path
-            print(f"Template: {template_path.name}")
-            print("[1/3] Analysing template structure…")
-            print("[2/3] Generating content mapping…")
-            print("[3/3] Applying replacements…")
-            output_path = Path(args.output) if args.output else None
-            out = fill_template(
-                brief=args.brief,
-                template_path=template_path,
-                output_path=output_path,
-                client=client,
-                workspace=workspace,
-            )
-            print(f"\nDone: {out}")
 
         elif args.cmd == "status":
             print(f"Stage: {state.stage.value}")
