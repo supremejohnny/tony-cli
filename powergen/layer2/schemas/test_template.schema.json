@@ -3,7 +3,7 @@
 
   "schema_version": "1",
   "template_id": "lumi_course_planning_v1",
-  "source_pptx": "test.pptx",
+  "source_pptx": "../../../test/test.pptx",
   "notes": "First template authored. Primary brand color TBD — designer needs to confirm. Accent colors extracted from slide 5 callouts. Slides 6 and 8 are duplicates of slide 3 with different text; consolidated into the single 'section_intro' reusable rather than three separate entries.",
 
   "tokens": {

@@ -103,24 +103,30 @@ Mock returns hardcoded plan/spec JSON. The rendered `.pptx` will be a real file 
 - Schema: `layer2/schemas/<template>.schema.json` (authored once per template)
 - Validator: `layer2/scripts/validate.py` (checks locators resolve, hex colors valid, content_types registered)
 
-**Deliverables needed**
+**Deliverables**
 
 | File | Purpose | Status |
 |---|---|---|
 | `layer2/SKILL.md` | Schema authoring procedure (6 steps) | Done |
 | `layer2/schemas/test_template.schema.json` | Worked example for `test.pptx` | Done |
 | `layer2/scripts/validate.py` | Schema validator (checks locators, hex, content_types) | Done |
-| `layer2/scripts/inspect_pptx.py` | Dump shape inventory from `.pptx` (Step 1 tool) | **Not started** |
-| `layer2/composer/schema_loader.py` | Load + strip comments from schema JSON | **Not started** |
-| `layer2/composer/slot_resolver.py` | Resolve `shape_name` / `nth` / `near` locators | **Not started** |
-| `layer2/composer/slide_cloner.py` | Clone reusable slide + fill all slot kinds | **Not started** |
-| `layer2/composer/renderers/card.py` | `card` content_type renderer | **Not started** |
-| `layer2/composer/renderers/bullet.py` | `bullet` content_type renderer | **Not started** |
-| `layer2/composer/renderers/flow.py` | `flow` content_type renderer | **Not started** |
-| `layer2/composer/renderers/numbered.py` | `numbered` content_type renderer | **Not started** |
-| CLI: `powergen template` | Re-implement `template` command using schema flow | **Not started** |
+| `layer2/scripts/inspect_pptx.py` | Dump shape inventory from `.pptx` | Done |
+| `layer2/composer/schema_loader.py` | Load + strip comments from schema JSON | Done |
+| `layer2/composer/slot_resolver.py` | Resolve `shape_name` / `nth` / `near` locators | Done |
+| `layer2/composer/slide_cloner.py` | Clone reusable slide + fill all slot kinds | Done |
+| `layer2/composer/renderers/card.py` | `card` content_type renderer | Done |
+| `layer2/composer/renderers/bullet.py` | `bullet` content_type renderer | Done |
+| `layer2/composer/renderers/flow.py` | `flow` content_type renderer | Done |
+| `layer2/composer/schema_gen.py` | **Local** pptx → schema extraction (no LLM, cached) | Done |
+| CLI: `powergen template --pptx` | Auto-schema pipeline (`--pptx` or `--schema`) | Done |
 
-**Development order**: inspect_pptx → schema_loader + slot_resolver → slide_cloner → renderers (card first) → CLI integration
+**Known issues / next polish**
+
+| Issue | Symptom | Likely cause |
+|---|---|---|
+| Slot fill failures on some slides | Original template text shows through | PLACEHOLDER shapes not resolved after clone — spTree deep-copy may not include layout-inherited placeholders |
+| Font / formatting degradation | Text loses template font; falls back to system default | Theme font refs (`+mj-lt`, `+mn-lt`) don't resolve without original slide layout relationship in cloned slide |
+| Bullet formatting off | Bullet character mispositioned or missing | `_set_multiline` doesn't copy `<a:pPr>` (paragraph properties including indent/bullet settings) |
 
 **Validation (what exists now)**
 

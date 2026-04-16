@@ -22,8 +22,18 @@ powergen/
 │   ├── SKILL.md        # how to author a template.schema.json
 │   ├── schemas/        # one .schema.json per template
 │   │   └── test_template.schema.json
+│   ├── composer/       # Composer code (deterministic Python)
+│   │   ├── schema_gen.py    # local pptx → schema extraction (no LLM)
+│   │   ├── schema_loader.py # load + strip _comment fields from schema JSON
+│   │   ├── slot_resolver.py # resolve shape_name / nth / near locators
+│   │   ├── slide_cloner.py  # clone reusable slide + fill slots (lxml + OPC)
+│   │   ├── composer.py      # orchestrate clone + renderer calls
+│   │   ├── planner.py       # Composer LLM call + mock_plan()
+│   │   └── renderers/       # one module per content_type
+│   │       ├── card.py, bullet.py, flow.py
 │   └── scripts/
-│       └── validate.py # validate schema locators against source .pptx
+│       ├── validate.py      # validate schema locators against source .pptx
+│       └── inspect_pptx.py  # dump shape inventory from .pptx
 │
 └── scripts/office/     # OOXML tools: pack, unpack, validate XML
 ```
@@ -49,14 +59,29 @@ powergen --mock
 
 ## Layer 2 — Schema-based template composition
 
-Composer not yet implemented. Schema tooling available:
+Point at any `.pptx` template — schema is auto-generated locally and cached.
 
 ```bash
-# validate a template schema against its source .pptx
-python -m powergen.layer2.scripts.validate powergen/layer2/schemas/test_template.schema.json
+# primary usage: auto-schema from pptx (schema cached as <pptx>.schema.json)
+powergen template --pptx my_template.pptx --topic "your topic" --output out.pptx
+
+# with cheaper model
+powergen --model claude-haiku-4-5-20251001 template --pptx my_template.pptx --topic "..."
+
+# zero tokens (mock, exercises full code path)
+powergen --mock template --pptx my_template.pptx --topic "..." --output out.pptx
+
+# advanced: hand-authored schema (full slot control)
+powergen template --schema powergen/layer2/schemas/test_template.schema.json --topic "..."
+
+# tooling
+python -m powergen.layer2.scripts.inspect_pptx my_template.pptx   # shape inventory
+python -m powergen.layer2.scripts.validate my_template.schema.json # validate schema
 ```
 
-See [layer2/SKILL.md](layer2/SKILL.md) for how to author a schema for a new template.
+**Known issues (in progress)**:
+- Some PLACEHOLDER-type shapes not resolved after slide clone → original template text shows through
+- Theme fonts (`+mj-lt`, `+mn-lt`) may fall back to system default in cloned slides → visual formatting degradation
 
 ## Layer 3 — Full Visual
 
