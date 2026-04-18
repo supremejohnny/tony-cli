@@ -44,8 +44,16 @@ def clone_and_fill(src_prs, dest_prs, slide_def, fill):
 # Clone
 # ---------------------------------------------------------------------------
 
+def _find_layout(dest_prs, layout_name):
+    for layout in dest_prs.slide_layouts:
+        if layout.name == layout_name:
+            return layout
+    return blank_layout(dest_prs)
+
+
 def _clone_slide(src_slide, dest_prs):
-    new_slide = dest_prs.slides.add_slide(blank_layout(dest_prs))
+    dest_layout = _find_layout(dest_prs, src_slide.slide_layout.name)
+    new_slide = dest_prs.slides.add_slide(dest_layout)
 
     src_sp_tree = src_slide.shapes._spTree
     new_sp_tree = new_slide.shapes._spTree

@@ -5,6 +5,8 @@ For each plan slide:
   - type "reusable"  → clone_and_fill from source pptx
   - type "generated" → call the registered renderer with fill + tokens
 """
+import io
+
 from pptx import Presentation
 
 from .renderers import get as get_renderer
@@ -23,9 +25,11 @@ def compose(schema: dict, src_prs: Presentation, plan: dict) -> Presentation:
     Returns:
         A new Presentation with all slides appended.
     """
-    dest_prs = Presentation()
-    dest_prs.slide_width = src_prs.slide_width
-    dest_prs.slide_height = src_prs.slide_height
+    buf = io.BytesIO()
+    src_prs.save(buf)
+    buf.seek(0)
+    dest_prs = Presentation(buf)
+    _clear_slides(dest_prs)
 
     tokens = schema.get("tokens", {})
     reusable = schema.get("reusable_slides", {})
@@ -49,3 +53,17 @@ def compose(schema: dict, src_prs: Presentation, plan: dict) -> Presentation:
             raise ValueError(f"Unknown slide type {slide_type!r} — expected 'reusable' or 'generated'")
 
     return dest_prs
+
+
+def _clear_slides(prs: Presentation) -> None:
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+    prs_part = prs.part
+    sldIdLst = prs.slides._sldIdLst
+    for sldId in list(sldIdLst):
+        sldIdLst.remove(sldId)
+    slide_rids = [
+        rId for rId, rel in list(prs_part.rels.items())
+        if not rel.is_external and rel.reltype == RT.SLIDE
+    ]
+    for rId in slide_rids:
+        prs_part.drop_rel(rId)

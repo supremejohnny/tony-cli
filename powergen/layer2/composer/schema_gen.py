@@ -18,8 +18,14 @@ def generate(pptx_path: Path) -> dict:
     reusable_slides: dict = {}
 
     for i, slide in enumerate(prs.slides):
+        # First pass: count how many times each name appears (text-bearing shapes only)
+        total_count: dict[str, int] = {}
+        for shape in slide.shapes:
+            if shape.has_text_frame and shape.text_frame.text.strip():
+                total_count[shape.name] = total_count.get(shape.name, 0) + 1
+
         slots: dict = {}
-        name_count: dict[str, int] = {}
+        occurrence: dict[str, int] = {}
 
         for shape in slide.shapes:
             if not shape.has_text_frame:
@@ -29,8 +35,8 @@ def generate(pptx_path: Path) -> dict:
                 continue
 
             sname = shape.name
-            n = name_count.get(sname, 0)
-            name_count[sname] = n + 1
+            n = occurrence.get(sname, 0)
+            occurrence[sname] = n + 1
 
             paras_with_text = [p for p in shape.text_frame.paragraphs if p.text.strip()]
             kind = "multiline" if len(paras_with_text) > 1 else "text"
@@ -42,7 +48,7 @@ def generate(pptx_path: Path) -> dict:
                 "required": True,
                 "default": text[:120],
             }
-            if n > 0:
+            if total_count[sname] > 1:
                 slot["nth"] = n
             slots[slot_key] = slot
 
