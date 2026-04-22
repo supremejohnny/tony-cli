@@ -12,12 +12,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 复杂的改动或功能先行讨论方案，简单的 debug 和 bug 修复直接做
 - 修改超过 3 个文件时拆分成小任务
-- 开始编码前先读 `POWERGEN_ROADMAP.md` 和 `claude_progress.md` 了解当前进度和决策背景
+- 开始编码前先读 `.claude/roadmap.md` 和 `.claude/progress.md` 了解当前进度和决策背景
 
 ## 编码
 
 - 尽量减少注释，除非逻辑不明显
 - 修改现有代码时保持原有风格
+
+---
+
+## Project Context
+
+- `.claude/roadmap.md` — 里程碑进度，开始新功能前先看
+- `.claude/progress.md` — 最近 2-3 个 session 的详细记录，每次 session 开始时看
+- `.claude/progress_archive.md` — 历史 session 压缩归档，仅回溯决策时看
+- `.claude/architecture.md` — 架构设计和决策理由，涉及架构变更时看
 
 ---
 
@@ -43,15 +52,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Schema 文件（`layer2/schemas/*.schema.json`）是每个模板的唯一真相来源；形状定位用复合 locator（`shape_name` → `+nth` → `+near`）解决重名问题。
 
-**当前状态**（截至 2026-04-15）：
-- 已完成：`SKILL.md`（schema 编写规程）、`test_template.schema.json`（示例）、`validate.py`（schema 校验器）
-- 未开始：`inspect_pptx.py`、`schema_loader.py`、`slot_resolver.py`、`slide_cloner.py`、各 renderer、CLI `template` 命令
-
-**开发顺序**：`inspect_pptx` → `schema_loader` + `slot_resolver` → `slide_cloner` → renderers（`card` 优先）→ CLI 集成
-
 ### Layer 3 — Full Visual（未开始）
 
-计划用 `pptxgenjs`（Node.js）+ Sonnet 模型，见 `POWERGEN_ROADMAP.md`。
+计划用 `pptxgenjs`（Node.js）+ Sonnet 模型，见 `.claude/architecture.md`。
 
 ---
 

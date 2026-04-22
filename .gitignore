@@ -45,4 +45,8 @@ note.txt
 .powergen_distill/
 
 test/
-.claude/
+.claude/*
+!.claude/roadmap.md
+!.claude/architecture.md
+!.claude/progress.md
+!.claude/progress_archive.md
