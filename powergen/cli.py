@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Topic / content description for the Composer LLM")
     tmpl_p.add_argument("--plan", default=None, metavar="FILE",
                         help="Load a pre-authored plan.json instead of calling the LLM")
+    tmpl_p.add_argument("--annotate", action="store_true",
+                        help="Run LLM annotator on the template schema (requires --pptx)")
     tmpl_p.add_argument("--output", "-o", default=None, metavar="FILE",
                         help="Output .pptx path (default: <title>.pptx)")
 
@@ -154,6 +156,7 @@ def _run_template(args, client) -> int:
 
     from .layer2.composer.planner import generate_plan, mock_plan
     from .layer2.composer.composer import compose
+    from .layer2.composer.annotator import load_or_annotate, merge_into_schema
 
     # Resolve schema + src_pptx
     if args.pptx:
@@ -162,7 +165,7 @@ def _run_template(args, client) -> int:
         if not pptx_path.exists():
             print(f"Error: pptx not found: {pptx_path}", file=sys.stderr)
             return 1
-        schema, _ = load_or_generate(pptx_path)
+        schema, schema_path = load_or_generate(pptx_path)
         src_pptx = pptx_path.resolve()
     elif args.schema:
         from .layer2.composer.schema_loader import load as load_schema
@@ -178,6 +181,37 @@ def _run_template(args, client) -> int:
     else:
         print("Error: provide --pptx <template.pptx> or --schema <file.schema.json>", file=sys.stderr)
         return 1
+
+    # --annotate: generate semantic annotations and exit
+    if getattr(args, "annotate", False):
+        if not args.pptx:
+            print("Error: --annotate requires --pptx", file=sys.stderr)
+            return 1
+        from .mock_client import MockLLMClient
+        if isinstance(client, MockLLMClient):
+            print("Error: --annotate requires a real API client (remove --mock)", file=sys.stderr)
+            return 1
+        load_or_annotate(schema, schema_path, client)
+        return 0
+
+    # Load and merge annotations if cached
+    from .layer2.composer.annotator import _ann_path
+    ann_path = _ann_path(schema_path)
+    if ann_path.exists():
+        annotations = json.loads(ann_path.read_text(encoding="utf-8"))
+        schema = merge_into_schema(schema, annotations)
+        n_non_composable = sum(
+            1 for sd in schema.get("reusable_slides", {}).values()
+            if not sd.get("composable", True)
+        )
+        n_decorative = sum(
+            1 for sd in schema.get("reusable_slides", {}).values()
+            if sd.get("decorative_heavy", False)
+        )
+        if n_non_composable:
+            print(f"Warning: {n_non_composable} non-composable slide(s) — will be cloned as-is")
+        if n_decorative:
+            print(f"Note: {n_decorative} decorative-heavy slide(s) detected")
 
     # Determine plan
     if args.plan:

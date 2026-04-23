@@ -5,12 +5,33 @@ Strategy in order of preference (from SKILL.md):
   1. shape_name only — when the name is unique on the slide
   2. shape_name + nth — Nth occurrence (0-indexed, document order)
   3. shape_name + near {top, left} — closest by Manhattan distance in inches
+
+GROUP shapes are transparent: sub-shapes are searched recursively.
 """
 from pptx.util import Emu
 
 
 def _to_in(emu):
     return Emu(emu).inches if emu is not None else 0.0
+
+
+def _all_shapes(slide):
+    """Yield all shapes on a slide, recursively entering GROUP containers."""
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    for shape in slide.shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _iter_group(shape)
+        else:
+            yield shape
+
+
+def _iter_group(group_shape):
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    for shape in group_shape.shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _iter_group(shape)
+        else:
+            yield shape
 
 
 def resolve(slide, shape_name, nth=None, near=None):
@@ -26,7 +47,7 @@ def resolve(slide, shape_name, nth=None, near=None):
     Raises:
         ValueError if the locator is ambiguous or resolves to zero shapes.
     """
-    candidates = [s for s in slide.shapes if s.name == shape_name]
+    candidates = [s for s in _all_shapes(slide) if s.name == shape_name]
     if not candidates:
         raise ValueError(f"No shape named {shape_name!r} on slide")
 
@@ -74,7 +95,7 @@ def resolve_repeating_field(slide, field_def, instance_index, stride_x=0.0, stri
     Returns the matching shape, or raises ValueError.
     """
     shape_name = field_def["shape_name"]
-    candidates = [s for s in slide.shapes if s.name == shape_name]
+    candidates = [s for s in _all_shapes(slide) if s.name == shape_name]
     if not candidates:
         raise ValueError(f"No shape named {shape_name!r} on slide (repeating field)")
 

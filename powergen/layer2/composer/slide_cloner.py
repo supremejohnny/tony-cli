@@ -29,7 +29,8 @@ def clone_and_fill(src_prs, dest_prs, slide_def, fill):
         dest_prs:   destination Presentation (slide appended in place)
         slide_def:  dict from schema['reusable_slides'][key]
         fill:       {slot_key: value} — str for text/multiline,
-                    list-of-dicts for repeating, None for optional_hint
+                    list-of-lists for table, list-of-dicts for repeating,
+                    None for optional_hint
 
     Returns:
         The newly added pptx.slide.Slide.
@@ -102,17 +103,31 @@ def _clone_slide(src_slide, dest_prs):
 def _fill_slots(new_slide, slots_def, fill):
     for slot_key, slot_def in slots_def.items():
         kind = slot_def.get("kind")
-        value = fill.get(slot_key) if fill else None
-        if value is None:
-            value = slot_def.get("default")
+
+        # Only write to a shape when the fill dict explicitly contains this key.
+        # Missing key → leave clone's original text intact (avoids truncated-default overwrites).
+        in_fill = fill is not None and slot_key in fill
+        value = fill[slot_key] if in_fill else None
 
         if kind == "repeating":
-            instances = (fill.get(slot_key) if fill else None) or []
+            instances = value if isinstance(value, list) else []
             _fill_repeating(new_slide, slot_def, instances)
             continue
 
         if kind == "optional_hint":
-            _fill_optional_hint(new_slide, slot_def, value)
+            if in_fill:
+                _fill_optional_hint(new_slide, slot_def, value)
+            continue
+
+        if kind == "table":
+            if not isinstance(value, list):
+                continue
+            try:
+                shape = resolve_slot(new_slide, slot_def)
+            except ValueError as exc:
+                warnings.warn(f"slot {slot_key!r}: {exc}")
+                continue
+            _set_table(shape, value)
             continue
 
         if value is None:
@@ -171,6 +186,29 @@ def _fill_optional_hint(new_slide, slot_def, value):
 # Text setters
 # ---------------------------------------------------------------------------
 
+def _ensure_norm_autofit(shape):
+    """Replace noAutofit with normAutofit in shape's bodyPr to prevent text overflow."""
+    try:
+        txBody = shape.text_frame._txBody
+        bodyPr = txBody.find(qn("a:bodyPr"))
+        if bodyPr is None:
+            return
+        no_autofit = bodyPr.find(qn("a:noAutofit"))
+        if no_autofit is not None:
+            bodyPr.remove(no_autofit)
+            etree.SubElement(bodyPr, qn("a:normAutofit"))
+            return
+        # If no autofit element exists at all, add normAutofit
+        has_autofit = (
+            bodyPr.find(qn("a:normAutofit")) is not None
+            or bodyPr.find(qn("a:spAutoFit")) is not None
+        )
+        if not has_autofit:
+            etree.SubElement(bodyPr, qn("a:normAutofit"))
+    except Exception:
+        pass
+
+
 def _set_text(shape, text):
     if not shape.has_text_frame:
         return
@@ -197,6 +235,8 @@ def _set_text(shape, text):
             first_para.insert(list(first_para).index(end_rpr), new_r)
         etree.SubElement(new_r, qn("a:t")).text = text
 
+    _ensure_norm_autofit(shape)
+
 
 def _set_multiline(shape, text):
     if not shape.has_text_frame:
@@ -222,6 +262,8 @@ def _set_multiline(shape, text):
         txBody.append(new_p)
         _fill_para(new_p, line, rPr_template)
 
+    _ensure_norm_autofit(shape)
+
 
 def _fill_para(para_el, line_text, rPr_template):
     for r in para_el.findall(qn("a:r")):
@@ -244,3 +286,44 @@ def _fill_para(para_el, line_text, rPr_template):
     if end_rpr is not None:
         para_el.remove(end_rpr)
         para_el.append(end_rpr)
+
+
+def _set_table(shape, data: list):
+    """Fill table cells from a 2D list. Preserves cell run formatting."""
+    if not shape.has_table:
+        return
+    tbl = shape.table
+    for r_idx, row_data in enumerate(data):
+        if r_idx >= len(tbl.rows):
+            break
+        if not isinstance(row_data, list):
+            continue
+        for c_idx, cell_text in enumerate(row_data):
+            if c_idx >= len(tbl.columns):
+                break
+            cell = tbl.rows[r_idx].cells[c_idx]
+            _set_table_cell(cell, str(cell_text) if cell_text else "")
+
+
+def _set_table_cell(cell, text: str):
+    tf = cell.text_frame
+    txBody = tf._txBody
+    paras = txBody.findall(qn("a:p"))
+    if not paras:
+        return
+    first_para = paras[0]
+    runs = first_para.findall(qn("a:r"))
+
+    for r in runs[1:]:
+        first_para.remove(r)
+    for p in paras[1:]:
+        txBody.remove(p)
+
+    if runs:
+        t_el = runs[0].find(qn("a:t"))
+        if t_el is None:
+            t_el = etree.SubElement(runs[0], qn("a:t"))
+        t_el.text = text
+    else:
+        new_r = etree.SubElement(first_para, qn("a:r"))
+        etree.SubElement(new_r, qn("a:t")).text = text
