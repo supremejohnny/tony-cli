@@ -173,10 +173,13 @@ class MockLLMClient:
     """Returns canned responses for offline / CI testing."""
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
-        # Use system_prompt only for Layer 2 detection: user_prompt for call 2
-        # contains the full analysis JSON (with "text_nodes"), which would
-        # cause a false match if we checked combined.
         sp = system_prompt.lower()
+        # Layer 2 — composer planner
+        if "presentation composer" in sp:
+            # Caller passes schema to mock_plan() directly; returning empty
+            # plan here because the CLI uses mock_plan() when --mock is set.
+            return '{"title": "mock", "slides": []}'
+        # Legacy Layer 2 — old markitdown approach (abandoned, kept for safety)
         if "presentation analyst" in sp:
             return _MOCK_TEMPLATE_ANALYSIS_JSON
         if "presentation writer" in sp:
