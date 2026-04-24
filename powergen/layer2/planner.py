@@ -40,9 +40,9 @@ _SYSTEM_PROMPT = """\
 }
 
 规则：
-- shape 名称必须和清单中完全一致（包括空格和中文）
+- shape 名称必须和清单中完全一致，包括 [N] 后缀（如 "TextBox 15[0]" 和 "TextBox 15[1]" 是两个不同的 shape）
 - 不需要改动的 shape 不要放进 text_map（保留原始文本）
-- 如果模板中没有合适的 slide，可输出 {"type": "generated", "content_type": "bullet", "title": "...", "items": [...]} 作为 fallback
+- 如果模板中没有合适的 slide，可输出 {"type": "generated", "content_type": "bullet", "title": "...", "items": ["item1", "item2"]} 作为 fallback
 - 直接输出 JSON，不要有任何其他文字\
 """
 
