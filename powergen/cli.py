@@ -154,9 +154,9 @@ def main(argv: list[str] | None = None) -> int:
 def _run_template(args, client) -> int:
     from pptx import Presentation
 
-    from .layer2.composer.planner import generate_plan, mock_plan
     from .layer2.composer.composer import compose
-    from .layer2.composer.annotator import load_or_annotate, merge_into_schema
+    from .layer2.composer.spec import generate_spec, mock_spec
+    from .layer2.composer.compiler import compile_plan
 
     # Resolve schema + src_pptx
     if args.pptx:
@@ -182,7 +182,7 @@ def _run_template(args, client) -> int:
         print("Error: provide --pptx <template.pptx> or --schema <file.schema.json>", file=sys.stderr)
         return 1
 
-    # --annotate: generate semantic annotations and exit
+    # --annotate: generate semantic slot annotations and exit
     if getattr(args, "annotate", False):
         if not args.pptx:
             print("Error: --annotate requires --pptx", file=sys.stderr)
@@ -191,30 +191,24 @@ def _run_template(args, client) -> int:
         if isinstance(client, MockLLMClient):
             print("Error: --annotate requires a real API client (remove --mock)", file=sys.stderr)
             return 1
+        from .layer2.composer.annotator import load_or_annotate
         load_or_annotate(schema, schema_path, client)
         return 0
 
-    # Load and merge annotations if cached
-    from .layer2.composer.annotator import _ann_path
+    # Merge slot annotations if cached (provides slot_label + intent_tags for better output)
+    from .layer2.composer.annotator import _ann_path, merge_into_schema, _ANNOTATOR_VERSION
     ann_path = _ann_path(schema_path)
     if ann_path.exists():
         annotations = json.loads(ann_path.read_text(encoding="utf-8"))
+        ann_ver = annotations.get("annotator_version", "1")
+        if ann_ver < _ANNOTATOR_VERSION:
+            print(f"Note: annotations are v{ann_ver} (current: v{_ANNOTATOR_VERSION}) — re-run --annotate for intent_tags")
         schema = merge_into_schema(schema, annotations)
-        n_non_composable = sum(
-            1 for sd in schema.get("reusable_slides", {}).values()
-            if not sd.get("composable", True)
-        )
-        n_decorative = sum(
-            1 for sd in schema.get("reusable_slides", {}).values()
-            if sd.get("decorative_heavy", False)
-        )
-        if n_non_composable:
-            print(f"Warning: {n_non_composable} non-composable slide(s) — will be cloned as-is")
-        if n_decorative:
-            print(f"Note: {n_decorative} decorative-heavy slide(s) detected")
+        print(f"Annotations: merged from {ann_path.name} (v{ann_ver})")
 
     # Determine plan
     if args.plan:
+        # Load a pre-authored plan.json directly (bypasses spec+compiler)
         plan_path = Path(args.plan)
         if not plan_path.exists():
             print(f"Error: plan file not found: {plan_path}", file=sys.stderr)
@@ -224,18 +218,25 @@ def _run_template(args, client) -> int:
     elif args.topic:
         from .mock_client import MockLLMClient
         if isinstance(client, MockLLMClient):
-            print("Mock mode: using built-in plan (--topic ignored in mock)")
-            plan = mock_plan(schema)
+            print("Mock mode: using built-in spec")
+            spec = mock_spec()
         else:
-            print("Composing plan…")
-            plan = generate_plan(schema, args.topic, client)
+            print("Planning content (Call 1)…")
+            spec = generate_spec(args.topic, client)
+
+        n_spec = len(spec.get("slides", []))
+        print(f"Spec: {n_spec} slides — {spec.get('title', '')!r}")
+        print("Compiling plan (Call 2)…")
+        plan = compile_plan(spec, schema)
     else:
         print("Error: provide --topic or --plan", file=sys.stderr)
         return 1
 
     title = plan.get("title", "presentation")
     n_slides = len(plan.get("slides", []))
-    print(f"Plan: {n_slides} slides — {title!r}")
+    n_reusable = sum(1 for s in plan["slides"] if s.get("type") == "reusable")
+    n_generated = n_slides - n_reusable
+    print(f"Plan: {n_slides} slides ({n_reusable} reusable, {n_generated} generated) — {title!r}")
 
     src_prs = Presentation(str(src_pptx))
     print("Composing…")

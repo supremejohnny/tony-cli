@@ -6,13 +6,11 @@ from pptx.util import Inches, Pt
 
 
 def rgb(hex_str):
-    """Parse #RRGGBB → RGBColor."""
     h = hex_str.lstrip("#")
     return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
 def blank_layout(prs):
-    """Return the Blank slide layout, or the layout with fewest placeholders."""
     for layout in prs.slide_layouts:
         if "blank" in layout.name.lower():
             return layout
@@ -20,13 +18,11 @@ def blank_layout(prs):
 
 
 def slide_dims(prs):
-    """Return (width_in, height_in) as floats."""
     from pptx.util import Emu
     return Emu(prs.slide_width).inches, Emu(prs.slide_height).inches
 
 
 def add_rect(slide, left, top, width, height, fill_hex, line_hex=None):
-    """Add a solid-filled rectangle (no border by default)."""
     shape = slide.shapes.add_shape(
         MSO_AUTO_SHAPE_TYPE.RECTANGLE,
         Inches(left), Inches(top), Inches(width), Inches(height),
@@ -41,9 +37,8 @@ def add_rect(slide, left, top, width, height, fill_hex, line_hex=None):
 def add_text(
     slide, text, left, top, width, height,
     font_size=12, bold=False, color_hex=None,
-    align=PP_ALIGN.LEFT, word_wrap=True, italic=False,
+    align=PP_ALIGN.LEFT, word_wrap=True, italic=False, font_name=None,
 ):
-    """Add a textbox and return the shape."""
     box = slide.shapes.add_textbox(
         Inches(left), Inches(top), Inches(width), Inches(height)
     )
@@ -58,15 +53,16 @@ def add_text(
     run.font.italic = italic
     if color_hex:
         run.font.color.rgb = rgb(color_hex)
+    if font_name:
+        run.font.name = font_name
     return box
 
 
 def add_text_multiline(
     slide, lines, left, top, width, height,
     font_size=12, bold=False, color_hex=None,
-    align=PP_ALIGN.LEFT, word_wrap=True,
+    align=PP_ALIGN.LEFT, word_wrap=True, font_name=None,
 ):
-    """Add a textbox with multiple paragraphs."""
     box = slide.shapes.add_textbox(
         Inches(left), Inches(top), Inches(width), Inches(height)
     )
@@ -84,11 +80,16 @@ def add_text_multiline(
         run.font.bold = bold
         if color_hex:
             run.font.color.rgb = rgb(color_hex)
+        if font_name:
+            run.font.name = font_name
     return box
 
 
+# --- Token accessors (support both v3 flat format and v1 nested format) ---
+
 def primary(tokens):
-    return tokens.get("primary_color", "#1F2937")
+    """Primary/dark color — used for titles and accent bars."""
+    return tokens.get("dk1_hex") or tokens.get("primary_color", "#1F2937")
 
 
 def accent(tokens, index=0):
@@ -96,11 +97,34 @@ def accent(tokens, index=0):
     return accents[index % len(accents)] if accents else "#7578EC"
 
 
+def brand_accent(tokens, offset=0):
+    """Brand color of the template, identified by frequency analysis in schema_gen."""
+    idx = tokens.get("brand_accent_index", 0) + offset
+    return accent(tokens, idx)
+
+
 def title_size(tokens):
-    r = tokens.get("title_font", {}).get("size_pt_range", [28, 40])
-    return r[1]  # use max
+    if "heading_size_pt" in tokens:
+        return tokens["heading_size_pt"]
+    return tokens.get("title_font", {}).get("size_pt_range", [28, 40])[1]
 
 
 def body_size(tokens):
-    r = tokens.get("body_font", {}).get("size_pt_range", [12, 16])
-    return r[1]
+    if "body_size_pt" in tokens:
+        return tokens["body_size_pt"]
+    return tokens.get("body_font", {}).get("size_pt_range", [12, 16])[1]
+
+
+def text_color(tokens):
+    """Appropriate text color based on background darkness."""
+    if tokens.get("bg_is_dark"):
+        return tokens.get("lt1_hex", "#F5F5F5")
+    return tokens.get("dk1_hex", "#1F2937")
+
+
+def heading_font_name(tokens):
+    return tokens.get("heading_font") or tokens.get("title_font", {}).get("name")
+
+
+def body_font_name(tokens):
+    return tokens.get("body_font") or tokens.get("body_font_obj", {}).get("name")

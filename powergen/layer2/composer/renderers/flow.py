@@ -14,7 +14,7 @@ from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
 from ._common import (
-    accent, add_rect, add_text, blank_layout,
+    brand_accent, add_rect, add_text, blank_layout,
     body_size, primary, rgb, slide_dims, title_size,
 )
 
@@ -65,7 +65,7 @@ def _render_flow_slide(slide, prs, slide_title, items, tokens):
 
     for i, text in enumerate(items):
         box_left = MARGIN_L + i * (box_w + ARROW_W)
-        acc = accent(tokens, i)
+        acc = brand_accent(tokens, i)
 
         # Box background
         box = slide.shapes.add_shape(

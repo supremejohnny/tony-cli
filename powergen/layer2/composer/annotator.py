@@ -1,12 +1,12 @@
 """LLM-powered schema annotator.
 
-Reads a v2 schema and produces semantic annotations:
-  - slide-level composable flag (False for decorative_heavy slides)
-  - slot-level semantic label from role whitelist
-  - confidence level: high / medium / low
+Reads a v4 schema and produces per-slide semantic annotations:
+  - composable flag (false only for decorative_heavy)
+  - intent_tags: closed-set list from 8 intent types
+  - slot-level semantic label from role whitelist + confidence
 
-Annotations cached as <stem>.annotated.json alongside the schema.
-Run once per template; re-run by deleting the cache file.
+Annotations cached as <stem>.annotated.json.
+Annotator v1 → v2: added intent_tags output.
 """
 from __future__ import annotations
 
@@ -14,41 +14,82 @@ import json
 import re
 from pathlib import Path
 
+_ANNOTATOR_VERSION = "2"
+
 _ROLE_WHITELIST = frozenset({"title", "subtitle", "body", "label", "caption", "callout"})
 _UNIQUE_ROLES = frozenset({"title", "subtitle"})
+_INTENT_WHITELIST = frozenset({
+    "cover", "section", "list", "comparison", "process", "group", "highlight", "closing"
+})
 
 _SYSTEM_PROMPT = """\
-You are a presentation template analyst. Given a schema of slide shapes, annotate each slide.
+You are a presentation template analyst. Annotate each slide in the schema.
 
 For EACH slide output:
-  composable: true or false
-    → false ONLY if the slide has decorative_heavy=true (explicitly marked in schema)
-    → true for ALL other slides, even if some text looks garbled or unreadable
-  slots: annotate each non-visual_only slot:
-    label: ONE of: title, subtitle, body, label, caption, callout
-    confidence: high | medium | low
-      high   = position + content clearly indicate this role
-      medium = reasonable inference
-      low    = uncertain, OR default text is garbled/unreadable
+
+1. composable: true or false
+   → false ONLY if the slide has decorative_heavy=true
+   → true for ALL other slides, even if text looks garbled
+
+2. intent_tags: list of 0–2 values from this CLOSED SET:
+     cover       — title slide (large dominant title, typically first slide)
+     section     — chapter divider (large title + optional small subtitle, NO bullet body)
+     list        — title + body area for multiple bullet points (body slot must have real vertical space)
+     comparison  — two parallel content columns
+     process     — sequential steps or flow layout
+     group       — grid of equal-weight card items
+     highlight   — single key fact (title + one short body)
+     closing     — end-of-presentation slide (typically last)
+   Use [] for decorative_heavy slides or slides with no clear content role.
+
+   Distinguish section vs list carefully:
+   - section: the body area is SMALL or absent — the slide is a visual divider, not a content container
+   - list: the body area is LARGE enough for bullet points (height_pct > 0.25, or multiline kind)
+
+   A schema hint from layout-name inference is shown — confirm or override based on visual evidence.
+   Max 2 tags per slide.
+
+3. slots: annotate each non-visual_only slot:
+   label: ONE of: title, subtitle, body, label, caption, callout
+   confidence: high | medium | low
 
 Hard rules:
-- composable: false ONLY for decorative_heavy slides. Garbled text alone does NOT make a slide non-composable.
 - Only one "title" per slide, only one "subtitle" per slide
 - At most 3 "high" confidence labels per slide
-- Skip slots marked visual_only=true (omit them entirely from output)
+- Skip slots marked visual_only=true
 
 Output ONLY valid JSON, no markdown fences, no explanation.
 
 Format:
 {
   "slides": {
-    "slide_0": {"composable": false, "reason": "decorative_heavy", "slots": {}},
-    "slide_1": {
+    "slide_0": {
       "composable": true,
+      "intent_tags": ["cover"],
       "slots": {
         "Title 2": {"label": "title", "confidence": "high"},
-        "object 6": {"label": "caption", "confidence": "low"}
+        "Subtitle 3": {"label": "subtitle", "confidence": "high"}
       }
+    },
+    "slide_1": {
+      "composable": true,
+      "intent_tags": ["section"],
+      "slots": {
+        "文本框 5": {"label": "title", "confidence": "high"}
+      }
+    },
+    "slide_2": {
+      "composable": true,
+      "intent_tags": ["list"],
+      "slots": {
+        "文本框 10": {"label": "title", "confidence": "high"},
+        "文本框 1": {"label": "body", "confidence": "high"}
+      }
+    },
+    "slide_3": {
+      "composable": false,
+      "intent_tags": [],
+      "slots": {}
     }
   }
 }
@@ -56,21 +97,22 @@ Format:
 
 
 def annotate(schema: dict, client) -> dict:
-    """Call LLM annotator and return post-processed annotations dict."""
     user_prompt = _build_prompt(schema)
     raw = client.generate(_SYSTEM_PROMPT, user_prompt)
     annotations = _parse_json(raw)
+    annotations["annotator_version"] = _ANNOTATOR_VERSION
     return _post_process(annotations, schema)
 
 
 def load_or_annotate(schema: dict, schema_path: Path, client) -> dict:
-    """Return annotations, generating + caching if not found."""
     ann_path = _ann_path(schema_path)
 
     if ann_path.exists():
         annotations = json.loads(ann_path.read_text(encoding="utf-8"))
-        print(f"Annotator: loaded cache ({ann_path.name})")
-        return annotations
+        if annotations.get("annotator_version", "1") >= _ANNOTATOR_VERSION:
+            print(f"Annotator: loaded cache ({ann_path.name})")
+            return annotations
+        print("Annotator: cache is v1, re-annotating for intent_tags…")
 
     print("Annotator: generating semantic annotations…")
     annotations = annotate(schema, client)
@@ -87,9 +129,15 @@ def merge_into_schema(schema: dict, annotations: dict) -> dict:
         slide_def = schema.get("reusable_slides", {}).get(slide_key)
         if slide_def is None:
             continue
+
         if not ann_slide.get("composable", True):
             slide_def["composable"] = False
             slide_def["composable_reason"] = ann_slide.get("reason", "")
+
+        # Annotator intent_tags override schema_gen inference (has more context)
+        if "intent_tags" in ann_slide:
+            slide_def["intent_tags"] = ann_slide["intent_tags"]
+
         for slot_key, slot_ann in ann_slide.get("slots", {}).items():
             slot_def = slide_def.get("slots", {}).get(slot_key)
             if slot_def is None:
@@ -98,6 +146,7 @@ def merge_into_schema(schema: dict, annotations: dict) -> dict:
                 slot_def["slot_label"] = slot_ann["label"]
             if slot_ann.get("confidence"):
                 slot_def["confidence"] = slot_ann["confidence"]
+
     return schema
 
 
@@ -106,9 +155,9 @@ def merge_into_schema(schema: dict, annotations: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def _ann_path(schema_path: Path) -> Path:
-    stem = schema_path.stem  # e.g. "courseplan_test.schema"
+    stem = schema_path.stem
     if stem.endswith(".schema"):
-        stem = stem[:-7]  # "courseplan_test"
+        stem = stem[:-7]
     return schema_path.parent / f"{stem}.annotated.json"
 
 
@@ -118,12 +167,15 @@ def _build_prompt(schema: dict) -> str:
     for slide_key, sdef in schema.get("reusable_slides", {}).items():
         decorative = sdef.get("decorative_heavy", False)
         meta = sdef.get("_meta", {})
+        schema_hint = sdef.get("intent_tags", [])
 
         header = f"[{slide_key}] {sdef.get('purpose', '')}"
+        if schema_hint:
+            header += f"  [schema hint: {schema_hint}]"
         if decorative:
             header += (
                 f"  <<decorative_heavy: text_shapes={meta.get('text_shape_count')}, "
-                f"avg_words={meta.get('avg_words_per_shape')}>>"
+                f"avg_chars={meta.get('avg_chars_per_shape')}>>"
             )
         lines.append(header)
 
@@ -143,7 +195,7 @@ def _build_prompt(schema: dict) -> str:
 
             pos = ""
             if "top_pct" in slot_def:
-                pos = f" pos=({slot_def['top_pct']:.2f}t,{slot_def['left_pct']:.2f}l)"
+                pos = f" pos=({slot_def['top_pct']:.2f}t,{slot_def['left_pct']:.2f}l,h={slot_def.get('height_pct',0):.2f})"
 
             font = ""
             if "font_size_pt" in slot_def:
@@ -162,21 +214,38 @@ def _parse_json(raw: str) -> dict:
     m = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
     if m:
         raw = m.group(1).strip()
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\{[\s\S]*\}", raw)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    cleaned = re.sub(r",\s*([}\]])", r"\1", raw)
+    return json.loads(cleaned)
 
 
 def _post_process(annotations: dict, schema: dict) -> dict:
-    """Enforce role whitelist, uniqueness, high-confidence count cap, and composable override."""
     for slide_key, ann_slide in annotations.get("slides", {}).items():
-        # composable:false only valid when slide is decorative_heavy in the schema
         slide_def = schema.get("reusable_slides", {}).get(slide_key, {})
+
+        # composable override
         if not ann_slide.get("composable", True) and not slide_def.get("decorative_heavy", False):
-            ann_slide["composable"] = True  # override incorrect non-composable classification
+            ann_slide["composable"] = True
+
+        # intent_tags: enforce closed-set whitelist, max 2
+        raw_tags = ann_slide.get("intent_tags", [])
+        ann_slide["intent_tags"] = [t for t in raw_tags if t in _INTENT_WHITELIST][:2]
 
         if not ann_slide.get("composable", True):
+            ann_slide["intent_tags"] = []
             ann_slide["slots"] = {}
             continue
 
+        # slot labels
         seen_unique: set[str] = set()
         high_count = 0
         valid_slots: dict = {}

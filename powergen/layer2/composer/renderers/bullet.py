@@ -10,7 +10,7 @@ Fill format:
 Falls back to two-column layout above 5 items. Max 8 items.
 """
 from ._common import (
-    accent, add_rect, add_text, add_text_multiline,
+    brand_accent, add_rect, add_text, add_text_multiline,
     blank_layout, body_size, primary, slide_dims, title_size,
 )
 
@@ -59,7 +59,7 @@ def _render_bullet_slide(slide, prs, slide_title, items, tokens):
 
 
 def _render_single_column(slide, items, tokens, left, top, width, height, b_size):
-    acc = accent(tokens, 0)
+    acc = brand_accent(tokens)
     item_h = height / max(len(items), 1)
 
     for i, text in enumerate(items):
@@ -74,7 +74,7 @@ def _render_single_column(slide, items, tokens, left, top, width, height, b_size
 
 
 def _render_two_column(slide, items, tokens, left, top, width, height, b_size):
-    acc = accent(tokens, 0)
+    acc = brand_accent(tokens)
     mid = (len(items) + 1) // 2
     col_w = (width - 0.3) / 2
     col_x = [left, left + col_w + 0.3]

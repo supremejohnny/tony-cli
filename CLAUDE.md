@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 复杂的改动或功能先行讨论方案，简单的 debug 和 bug 修复直接做
 - 修改超过 3 个文件时拆分成小任务
 - 开始编码前先读 `.claude/roadmap.md` 和 `.claude/progress.md` 了解当前进度和决策背景
+- 跨 session 继续实现任务时，编码前必须从 progress.md 还原完整的待办步骤列表，明确标出哪些已完成、哪些待做，再开始。不得跳过或静默合并步骤
 
 ## 编码
 

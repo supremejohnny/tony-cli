@@ -3,7 +3,7 @@ Composer: execute a plan dict against a schema, producing a Presentation.
 
 For each plan slide:
   - type "reusable"  → clone_and_fill from source pptx
-  - type "generated" → call the registered renderer with fill + tokens
+  - type "generated" → structure_type → deterministic renderer mapping → render
 """
 import io
 
@@ -11,6 +11,15 @@ from pptx import Presentation
 
 from .renderers import get as get_renderer
 from .slide_cloner import clone_and_fill
+
+# Deterministic mapping: LLM outputs structure_type, code picks the renderer.
+STRUCTURE_TO_RENDERER = {
+    "list": "title_bullets",
+    "comparison": "two_column",
+    "cards": "card_grid",
+    "process": "flow",
+    "section": "section_divider",
+}
 
 
 def compose(schema: dict, src_prs: Presentation, plan: dict) -> Presentation:
@@ -45,8 +54,9 @@ def compose(schema: dict, src_prs: Presentation, plan: dict) -> Presentation:
             clone_and_fill(src_prs, dest_prs, reusable[key], fill)
 
         elif slide_type == "generated":
-            content_type = entry.get("content_type")
-            render = get_renderer(content_type)
+            structure_type = entry.get("structure_type", "")
+            renderer_name = STRUCTURE_TO_RENDERER.get(structure_type, structure_type)
+            render = get_renderer(renderer_name)
             render(dest_prs, fill, tokens)
 
         else:
