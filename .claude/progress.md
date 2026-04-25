@@ -29,6 +29,18 @@
 
 ---
 
-## 下一步
+---
 
-Layer 3 — Full Visual（未开始），见 `roadmap.md` 和 `architecture.md`。
+## 2026-04-24 — Layer 3 架构设计
+
+**Branch**: `dev/powergen_layer3_ver1`
+
+**核心决策（今日讨论结论）：**
+
+1. **DESIGN_SPEC 删除**：降级为隐式 style context（有模板从 inventory 提取，无模板用 default theme），不作为独立阶段
+2. **per-slide loop 删除**：一次性生成完整 deck，只保留 CONTENT_PLAN approve + 全局 redo
+3. **Spec 升级为组合系统**：layout（空间骨架）× block（语义组件），4 layouts + 5 block types，防止 layout 爆炸
+4. **Renderer 解耦**：Phase 1 用 `PptxRenderer`（python-pptx），Phase 2 用 `BrowserRenderer`（Playwright → bbox → PPTX），spec 格式不变
+5. **Phase 2 渲染方向**：用浏览器替代手写 layout engine；HTML 是受限 DSL 而非自由网页，CSS 只用 layout subset
+
+**下一步**：Layer 3 Phase 1 实现，见 `roadmap.md`

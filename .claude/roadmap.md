@@ -29,12 +29,23 @@
 
 ---
 
-## Layer 3 — Conversation Loop with Checkpoints  `未开始`
+## Layer 3 — Compositional Deck Generation  `未开始`
 
-状态机：`CONTENT_PLAN → DESIGN_SPEC → SLIDE_GEN → QA_REVIEW → OUTPUT`
+状态机：`CONTENT_PLAN → SLIDE_GEN → QA → OUTPUT`
+设计原则：layout × block 组合系统；DESIGN_SPEC 降级为隐式 style context；无 per-slide loop。
+见 `architecture.md` 完整设计。
 
-- [ ] 状态机骨架
-- [ ] CLI REPL checkpoint（approve / edit / redo）
-- [ ] 单张 slide 生成 + soffice 预览渲染
-- [ ] QA 自检 loop
-- [ ] Layer 2 → Layer 3 衔接（`--from-template`）
+**Phase 1 — 组合 spec + python-pptx 渲染**
+- [ ] 状态机骨架（`composer.py`）+ CLI 接入（`powergen generate`）
+- [ ] `planner.py` — LLM: topic → slide list（purpose + key_message）
+- [ ] `spec_builder.py` — LLM: slide list → compositional spec（layout + blocks）
+- [ ] `renderer.py` 抽象层 + `renderers/pptx.py` — 4 layouts × 5 block types
+- [ ] `qa.py` — 组合合理性检查（density / overflow / block 搭配规则）
+- [ ] mock 端到端验证
+
+**Phase 2 — HTML / Playwright 渲染后端**
+- [ ] HTML layout templates（4 layouts，受限 CSS subset）
+- [ ] Playwright pipeline：render → getBoundingClientRect → EMU → python-pptx shapes
+- [ ] `renderers/browser.py` — 接入同一 spec，替换渲染后端
+- [ ] 字体锁定 + viewport 固定（防 layout drift）
+- [ ] 对比 Phase 1 产出质量

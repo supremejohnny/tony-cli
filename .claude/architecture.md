@@ -104,48 +104,130 @@ v1 让人类替 LLM 做所有语义分析，把结论以封闭 JSON schema（slo
 
 ---
 
-## Layer 3 — Conversation Loop with Checkpoints
+## Layer 3 — Compositional Deck Generation
+
+### 核心定位
+
+> **无模板，从零生成结构正确、可读的完整 deck。**
+
+Layer 1 填模板，Layer 2 选模板，Layer 3 组合组件。
+不追求设计感，追求"结构正确 + 组合合理"。
+
+---
 
 ### 状态机
 
 ```
-[1] CONTENT_PLAN ──approve──→ [2] DESIGN_SPEC ──approve──→ [3] SLIDE_GEN
-                                                                  │ per-slide loop
-                                                                  ▼
-                                                           [4] QA_REVIEW
-                                                                  ▼
-                                                           [5] OUTPUT
+CONTENT_PLAN ──approve──→ SLIDE_GEN ──→ QA ──→ OUTPUT
 ```
 
-每个 checkpoint：用户可 approve / 修改 / 重做当前阶段。
+- **DESIGN_SPEC 已删除**：视觉风格作为隐式 style context 注入 SLIDE_GEN，不单独作为阶段
+- **无 per-slide loop**：一次性生成完整 deck，用户看整体结果后决定 approve / 全局 redo
+- **QA 检查组合合理性**，不只检 overflow
 
 ### Checkpoint 说明
 
-**[1] CONTENT_PLAN**：LLM 输出 slide 结构（purpose + key_message）。纯内容，不涉及视觉。
+**CONTENT_PLAN**：LLM 输出 slide 列表（index, purpose, key_message）。纯内容，不涉及视觉。用户 approve / edit。
 
-**[2] DESIGN_SPEC**：LLM 输出 palette + font_pair + per-slide layout 方向。
-若提供 .pptx 模板，从模板自动提取 palette/font 作为默认值。
+**SLIDE_GEN**：LLM 读 slide 列表 + style context → 输出 compositional spec → 纯代码渲染。一次性生成完整 deck，不逐张 loop。
 
-**[3] SLIDE_GEN**：逐张生成 → soffice 渲染预览 → 用户 approve/redo。
-前序 slide 的修改结果成为后续 slide 的 context（风格一致性）。
+**QA**：LLM 检查组合合理性，输出问题列表（不自动修）。用户决定是否 redo SLIDE_GEN。
 
-**[4] QA_REVIEW**：LLM 自检全部 slide（字体一致性、对齐、文字溢出）→ 输出问题列表 → 用户确认修复范围。
+---
 
-### 技术选型
+### Compositional Spec 格式
 
-| 组件 | 选择 | 理由 |
-|------|------|------|
-| Slide 生成 | python-pptx（先）| 和现有代码库一致，先跑通流程 |
-| 预览渲染 | libreoffice --headless → pdf → pdftoppm → png | 免费，CI 友好 |
-| 模型 | Sonnet | 视觉决策需要更强的推理能力 |
-| 交互界面 | CLI REPL（先）→ Web UI（后） | 先验证 loop 设计 |
+> **Layer 3 的核心：spec 从线性结构升级为组合系统。**
 
-### Layer 2 → Layer 3 衔接
-
-```bash
-powergen visual --from-template my_template.pptx --topic "..."
+```json
+{
+  "slides": [
+    {
+      "layout": "two_column",
+      "title": "Why PowerGen",
+      "style": {"accent": "#2563EB"},
+      "blocks": [
+        {"type": "bullet_group", "region": "left", "items": ["Manual PPT is slow", "Templates are rigid"]},
+        {"type": "stat", "region": "right", "value": "87%", "label": "效率提升"}
+      ]
+    }
+  ]
+}
 ```
 
-Layer 2 的 inventory 为 Layer 3 的 CONTENT_PLAN 提供模板结构感知；
-Layer 2 的 inventory 为 DESIGN_SPEC 提供默认 palette/font。
-Layer 3 不依赖 Layer 2，没有模板也能独立运行。
+**4 个 layout（固定，不爆炸）：**
+
+| layout | regions |
+|--------|---------|
+| `title_slide` | center |
+| `single_column` | main |
+| `two_column` | left / right |
+| `comparison` | left / right（带标题栏） |
+
+**5 个 block type（初始）：**
+
+| block | 说明 |
+|-------|------|
+| `bullet_group` | 列表 |
+| `stat` | 大数字 + 标签 |
+| `quote` | 引用块 |
+| `note` | 小字注释 |
+| `heading` | 段落标题 |
+
+**Layer 1 vs Layer 3 spec 对比：**
+
+```
+Layer 1（线性）：{layout, title, bullets}
+Layer 3（组合）：{layout, title, style, blocks: [{type, region, ...}]}
+```
+
+---
+
+### Renderer 架构（解耦，Phase 1 / Phase 2 共用 spec）
+
+```
+powergen/layer3/
+  composer.py       # 状态机
+  planner.py        # LLM: topic → slide list
+  spec_builder.py   # LLM: slide list + style ctx → compositional spec
+  renderer.py       # 抽象层（接口）
+  renderers/
+    pptx.py         # Phase 1：python-pptx 实现
+    browser.py      # Phase 2：Playwright → bbox → PPTX
+  layouts/          # 4 个 layout 定义（region 坐标 / HTML template）
+  blocks/           # 5 个 block renderer
+  qa.py             # 检查组合合理性
+```
+
+**Renderer 解耦原则**：spec 格式固定，Phase 1 用 `PptxRenderer`，Phase 2 加 `BrowserRenderer`，状态机和 spec 不变。
+
+---
+
+### Phase 2：HTML / Playwright 渲染后端
+
+```
+DSL (compositional spec)
+  → HTML template fill（受限 HTML，class 是语义不是样式）
+  → Playwright headless（fixed viewport = 1280×720 = slide size）
+  → getBoundingClientRect() → EMU 坐标
+  → python-pptx shapes（按 bbox 定位）
+```
+
+**必须约束（否则不可控）：**
+- HTML 是 DSL，不是自由网页（固定 class 白名单）
+- CSS 只用 layout subset（flex/grid/padding/color，禁 position:absolute / transform）
+- viewport 固定，字体锁定（防 layout drift）
+- PPTX 是近似渲染，不追求 fidelity 完全复现
+
+**QA 规则（Phase 1 基础版）：**
+- `stat` + 长文本同 region → 警告
+- `bullet_group` items > 6 → 建议拆 slide
+- region 内 block 超过 2 个 → 警告密度过高
+
+---
+
+### Style Context（隐式，非阶段）
+
+- 有模板 → 从 Layer 2 inventory 提取主色 + 字体
+- 无模板 → hardcode 2–3 套 default theme
+- 用户可通过 `--theme` 选择，不作为独立 checkpoint
