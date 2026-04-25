@@ -1,29 +1,33 @@
 # Progress Archive
 
-Compressed session records. Only persistent decisions and final state — process omitted.
+历史 session 压缩归档。仅回溯决策时查阅。
 
 ---
 
-## 2026-04-15 — Session 1 (compressed)
+## Layer 2 v1（Schema-Based）— 已归档
 
-**Branch**: `dev/powergen_layer2_ver1`
+**Branch**: `archive/layer2_v1_schema`（原 `dev/powergen_layer2_ver1`）
 
-**Decision**: Abandoned markitdown Layer 2 (`template_filler.py`, `prompts_template.py` deleted). Root cause: flat text, no shape identity. Pivoted to schema-based composition (three actors: Composer LLM / Composer code / Renderers).
+**共 9 个 session**，完整实现了 schema 驱动的三角色架构（Composer LLM + Composer code + Renderers）。
+主要模块：`schema_gen.py`、`schema_loader.py`、`slot_resolver.py`、`slide_cloner.py`、`composer.py`、`planner.py`、`renderers/*`、`annotator.py`、`compiler.py`、`spec.py`。
 
-**Foundation**: `SKILL.md` (schema authoring) + `test_template.schema.json` (example) + `validate.py` (validator) created. Composer not started at end of session.
-
-**Cleanup**: `template_filler.py`, `prompts_template.py`, `test/.powergen_catalog/`, `.powergen_distill/`, `.powergen/project.json` deleted.
+**放弃原因**：Context engineering 结构性困境——人工 schema 把人类对模板的理解固化为模型的思维边界，配置成本高（560 行 SKILL.md，每模板 2–4 小时），且对特定场景过拟合。
+详见 `archive/layer2_v1_schema` 的 `powergen/layer2/README.md`。
 
 ---
 
-## 2026-04-16 — Session 2 (compressed)
+## Layer 2 v0（Catalog + Distiller）— 已归档
 
-**Branch**: `dev/powergen_layer2_ver1`
+**Branch**: `archive/layer2_v0_catalog`（原 `dev/powergen`）
 
-**Decision**: Hand-authored schema not scalable → added `schema_gen.py` (local auto-schema extraction, no LLM, cached as `<pptx>.schema.json`).
+使用 `distiller.py`（Vision OCR）+ `catalog.py`（含坐标的 shape 清单）方案。
+放弃原因：坐标信息对 LLM 文案决策无用；Vision 蒸馏成本高且有损；catalog 是另一种形式的人类结构预注入。
+详见 `archive/layer2_v0_catalog` 的 `powergen/README.md`。
 
-**Decision**: `powergen template --pptx <file>` as primary entry; `--schema` kept for manual override. Composer LLM prompt includes `was: '...'` per slot so model infers purpose from defaults.
+---
 
-**Completed**: All composer modules — schema_loader, slot_resolver, slide_cloner, composer, planner, renderers (card, bullet, flow), inspect_pptx.py. Pipeline end-to-end working.
+## Layer 1 — 完成
 
-**Known issues at end of session**: Slot fill failures on PLACEHOLDER shapes; font/formatting degradation (theme font refs in cloned slides not resolving). → Both addressed in Session 3.
+**Branch**: merged to `main`（commit `b06107e`）
+
+完整的 Layer 1 Scaffold pipeline：plan → spec → render，状态机，mock client，interactive REPL。

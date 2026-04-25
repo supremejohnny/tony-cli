@@ -41,9 +41,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Output .pptx path (default: <title>.pptx in current directory)",
     )
 
-    tmpl_p = sub.add_parser(
-        "template",
-        help="Compose a presentation from a pptx template (Layer 2)",
+    template_p = sub.add_parser("template", help="Fill a .pptx template with AI-generated content")
+    template_p.add_argument("--pptx", default=None, metavar="FILE", help="Path to the .pptx template")
+    template_p.add_argument("--topic", default=None, metavar="TOPIC", help="Topic or content description")
+    template_p.add_argument(
+        "--output", "-o",
+        default=None,
+        metavar="FILE",
+        help="Output .pptx path (default: <template>-filled.pptx)",
     )
     tmpl_src = tmpl_p.add_mutually_exclusive_group()
     tmpl_src.add_argument("--pptx", default=None, metavar="FILE",
@@ -119,6 +124,29 @@ def main(argv: list[str] | None = None) -> int:
             out = render_presentation(state.spec, output_path=output_path, template_path=template_path)
             state.advance_to_rendered(str(out))
             print(f"\nRendered: {out}")
+
+        elif args.cmd == "template":
+            from .layer2.composer import run as layer2_run, default_output_path
+            if not args.pptx:
+                print("Error: --pptx <file> is required.", file=sys.stderr)
+                return 1
+            if not args.topic:
+                print("Error: --topic <description> is required.", file=sys.stderr)
+                return 1
+            template_path = Path(args.pptx)
+            if not template_path.exists():
+                print(f"Error: template not found: {template_path}", file=sys.stderr)
+                return 1
+            output_path = Path(args.output) if args.output else default_output_path(template_path)
+            print(f"Template: {template_path.name}")
+            out = layer2_run(
+                template_path=template_path,
+                topic=args.topic,
+                output_path=output_path,
+                client=client,
+                mock=args.mock,
+            )
+            print(f"\nDone: {out}")
 
         elif args.cmd == "status":
             print(f"Stage: {state.stage.value}")

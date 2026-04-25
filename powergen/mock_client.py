@@ -173,17 +173,10 @@ class MockLLMClient:
     """Returns canned responses for offline / CI testing."""
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
-        sp = system_prompt.lower()
-        # Layer 2 — composer planner
-        if "presentation composer" in sp:
-            # Caller passes schema to mock_plan() directly; returning empty
-            # plan here because the CLI uses mock_plan() when --mock is set.
-            return '{"title": "mock", "slides": []}'
-        # Legacy Layer 2 — old markitdown approach (abandoned, kept for safety)
-        if "presentation analyst" in sp:
-            return _MOCK_TEMPLATE_ANALYSIS_JSON
-        if "presentation writer" in sp:
-            return _MOCK_TEMPLATE_MAPPING_JSON
+        # Layer 2 v2 mock path bypasses LLM entirely (planner.mock_plan),
+        # so this branch is a safety fallback only.
+        if "演示文稿編排器" in system_prompt or "演示文稿编排器" in system_prompt:
+            return '{"title": "Mock", "slides": [{"source_slide_index": 0, "reason": "slide", "text_map": {}}]}'
         # Layer 1 responses
         combined = (system_prompt + user_prompt).lower()
         if "spec" in combined and "slides" in combined and "audience" in combined:

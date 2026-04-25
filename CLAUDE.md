@@ -13,6 +13,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 复杂的改动或功能先行讨论方案，简单的 debug 和 bug 修复直接做
 - 修改超过 3 个文件时拆分成小任务
 - 开始编码前先读 `.claude/roadmap.md` 和 `.claude/progress.md` 了解当前进度和决策背景
+- 跨 session 继续实现任务时，编码前必须从 progress.md 还原完整的待办步骤列表，明确标出哪些已完成、哪些待做，再开始。不得跳过或静默合并步骤
+
 
 ## 编码
 
@@ -32,29 +34,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目架构
 
-**PowerGen** — AI 演示文稿生成器，三层渐进式架构，均位于 `powergen/` 下。
+**PowerGen** — AI 演示文稿生成器，三层并行出口架构，均位于 `powergen/` 下。
 
-### Layer 1 — Scaffold（进行中）
+### Layer 1 — Scaffold（完成）
+
 
 `powergen/{cli,planner,spec_builder,renderer,prompts,state,models,workspace,mock_client,repl}.py`
 
 状态机流程：`INIT → PLANNED → APPROVED → RENDERED`（由 `state.py` 管理，持久化到 `.powergen/project.json`）。
 两次 LLM 调用：plan 生成（`planner.py`）→ spec 生成（`spec_builder.py`）→ 纯代码渲染（`renderer.py`）。
 
-### Layer 2 — Schema-Based Template Composition（进行中）
+### Layer 2 — Clone + Best-effort Fill（进行中）
 
 `powergen/layer2/`
 
-三角色架构：
-1. **Composer LLM** — 读 schema 的语义面（slide 名称、slot key），输出 `plan.json`。不接触颜色/字体/位置。
-2. **Composer code** — 纯 Python。reusable slides 克隆 + slot 填充；generated slides 调 renderer。
-3. **Renderers** — 每个 `content_type` 一个模块，只读 `fill` 数据和 design tokens。
+三步流程：
+1. **`inventory_gen.py`**（纯代码）— 遍历模板每张 slide，提取 layout name + 所有有文字的 shape（name + text preview），输出轻量 `slide_inventory`，零 LLM token。
+2. **Composer LLM**（单次调用）— 读 inventory + topic，输出 slide 选取计划（`source_slide_index` + `text_map`），直接用 shape_name 映射新文案。同一张 slide 可被多次选取（clone 多份）。
+3. **Clone + fill**（纯代码）— 按计划 clone slide，best-effort name-match 填充文本，无精确 locator。Renderers 作为 fallback（模板无合适 slide 时 LLM 输出 `type: generated`）。
 
-Schema 文件（`layer2/schemas/*.schema.json`）是每个模板的唯一真相来源；形状定位用复合 locator（`shape_name` → `+nth` → `+near`）解决重名问题。
+**设计原则**：用代码做信息密度压缩（去掉 XML 噪音，只留 shape name + 文本），让 LLM 在语义上自由推断，不用人类预设的封闭类目约束。
 
 ### Layer 3 — Full Visual（未开始）
 
-计划用 `pptxgenjs`（Node.js）+ Sonnet 模型，见 `.claude/architecture.md`。
+状态机：`CONTENT_PLAN → DESIGN_SPEC → SLIDE_GEN → QA_REVIEW → OUTPUT`。
+逐张生成，每张有 approve/redo checkpoint。见 `.claude/architecture.md`。
 
 ---
 
@@ -74,8 +78,8 @@ powergen render
 # Layer 1 — 交互式 REPL
 powergen --mock
 
-# Layer 2 — 校验 schema
-python -m powergen.layer2.scripts.validate powergen/layer2/schemas/test_template.schema.json
+# Layer 2 — 零 token 测试（mock）
+powergen --mock template --pptx my_template.pptx --topic "..."
 ```
 
 > 任何代码路径验证都用 `--mock`，保留真实 API 调用给 prompt 质量测试。
@@ -87,6 +91,6 @@ python -m powergen.layer2.scripts.validate powergen/layer2/schemas/test_template
 | 操作 | 模型 | 约费 |
 |------|------|------|
 | Layer 1 完整流程 | Haiku | ~$0.002 |
-| Layer 2 schema 组合 | Haiku | ~$0.005–0.02 |
-| Layer 3 完整流程 | Sonnet | ~$0.05–0.20 |
+| Layer 2 v2（inventory + plan + fill） | Haiku | ~$0.003–0.01 |
+| Layer 3 完整流程（8 slides + QA） | Sonnet | ~$0.10–0.30 |
 | 任意层 `--mock` | — | $0.00 |

@@ -2,44 +2,33 @@
 
 ---
 
-## 2026-04-18 — Session 3
+## 2026-04-24 — Layer 2 v2 完成
 
-**Branch**: `dev/powergen_layer2_ver1`
+**Branch**: `dev/powergen_layer2_ver2`
 
-**Topics**: Visual fix — layout-inherited decorative shapes lost during slide clone
+**状态**：Layer 2 Phase 1 & 2 全部完成，已 push 到 remote。
 
-**Root cause identified**:
-- `compose()` used `Presentation()` (fresh default template) → wrong theme/master/layouts
-- `_clone_slide()` used `blank_layout(dest_prs)` → cloned slides used wrong layout
-- Result: layout-level decorative shapes (e.g., `矩形 7` dark overlay panel in `议程` layout) were invisible on cloned slides; text rendered with default black theme instead of template theme colors
+### 完成内容
 
-**Key findings from inspection**:
-- ALL shapes in test.pptx are PLACEHOLDER shapes (no text boxes at all)
-- Decorative shapes like dark overlay panels live in SLIDE LAYOUTS, not in slides' own spTree
-- Auto-schema (`schema_gen.py`) generates correct shape names; hand-authored `test_template.schema.json` has wrong shape names (different pptx version)
-- `_next_slide_partname` in python-pptx uses `len(sldIdLst) + 1`; clearing sldIdLst without dropping rels causes duplicate names in ZIP
+**Phase 1 — 核心 pipeline**
+- `inventory_gen.py`：遍历模板每张 slide，提取 shape name + text（纯代码，零 LLM token）
+- `planner.py`：Composer LLM，读 inventory + topic，输出 `source_slide_index` + `text_map` 计划
+- `slide_cloner.py`：按计划 clone slide，best-effort name-match fill；`_duplicate_within` 解决跨 package 污染问题
+- `composer.py`：统一 3 步流程（inventory → plan → clone+fill）
+- CLI：`powergen template --pptx FILE --topic "..."` / `--mock`
 
-**Files modified**:
-- `powergen/layer2/composer/composer.py` — `compose()` now initializes dest_prs from BytesIO copy of src_prs (preserving master/layouts/theme); `_clear_slides()` drops both sldId XML elements AND slide relationships to prevent ZIP duplicate name warnings
-- `powergen/layer2/composer/slide_cloner.py` — Added `_find_layout()` (match by layout name); `_clone_slide()` now uses matching layout from dest_prs instead of blank_layout
+**Phase 2 — 质量与边界**
+- 同名 shape `[N]` 索引：inventory_gen 两遍扫描，`_resolve_name` 在 fill 时解析
+- Generated fallback：LLM 输出 `type: generated` 时走 `renderers/bullet.py`
+- 图片保留 fix：dest_prs 从 BytesIO 完整复制，`_duplicate_within` 在同 package 内操作
+- 表格只读 awareness：inventory 标注 `[TABLE] name: NxM, preview`，planner prompt 禁止填表
 
-**Result**: Cloned slides now inherit correct layout → dark overlay panel visible, theme colors correct, PLACEHOLDER slot filling works. No ZIP warnings.
+### 关键设计决策
+- 表格不填充（Layer 2 原则：clone 模板视觉 + best-effort 文本替换；行数结构变更是 Layer 3 的职责）
+- cross-package Part 污染通过"全部在 dest_prs 内操作"解决，不引用 src_prs 的 Part 对象
 
 ---
 
-## 2026-04-18 — Session 4
+## 下一步
 
-**Branch**: `dev/powergen_layer2_ver1`
-
-**Topics**: API test with real template (`courseplan_test.pptx`); ambiguous shape fix
-
-**API test result** (Haiku, topic "麦克马斯特大学数学专业 course plan", `courseplan_test.pptx`):
-- Pipeline runs end-to-end, 11-slide plan composed correctly ✅
-- Style and fonts preserved successfully ✅
-- Minor line-spacing deviations (likely template-level, acceptable)
-- **Remaining issue**: 4 slots skipped with "Ambiguous: 2 shapes named X" warning
-  - Affected: `TextBox 15`, `标题 7`, `文本占位符 9`, `文本占位符 12`
-  - Root cause: `schema_gen.py` generates the first occurrence of a duplicated name WITHOUT `nth`, but slot_resolver requires `nth` when name is ambiguous
-
-**Files modified**:
-- `powergen/layer2/composer/schema_gen.py` — Two-pass name counting: if a shape name appears more than once, ALL occurrences get `nth` (including nth=0), preventing ambiguous slot lookups
+Layer 3 — Full Visual（未开始），见 `roadmap.md` 和 `architecture.md`。
