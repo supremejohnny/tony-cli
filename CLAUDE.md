@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 开始编码前先读 `.claude/roadmap.md` 和 `.claude/progress.md` 了解当前进度和决策背景
 - 跨 session 继续实现任务时，编码前必须从 progress.md 还原完整的待办步骤列表，明确标出哪些已完成、哪些待做，再开始。不得跳过或静默合并步骤
 
+
 ## 编码
 
 - 尽量减少注释，除非逻辑不明显
@@ -36,6 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **PowerGen** — AI 演示文稿生成器，三层并行出口架构，均位于 `powergen/` 下。
 
 ### Layer 1 — Scaffold（完成）
+
 
 `powergen/{cli,planner,spec_builder,renderer,prompts,state,models,workspace,mock_client,repl}.py`
 
