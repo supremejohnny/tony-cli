@@ -16,21 +16,41 @@ def generate(pptx_path: Path) -> dict:
     for i, slide in enumerate(prs.slides):
         raw: list[dict] = []
         for shape in slide.shapes:
+            if shape.has_table:
+                tbl = shape.table
+                preview_cells = []
+                for row in list(tbl.rows)[:2]:
+                    for cell in list(row.cells)[:3]:
+                        t = cell.text_frame.text.strip()
+                        if t:
+                            preview_cells.append(t[:30])
+                if preview_cells:
+                    raw.append({
+                        "name": shape.name,
+                        "type": "table",
+                        "rows": len(tbl.rows),
+                        "cols": len(tbl.columns),
+                        "preview": " | ".join(preview_cells[:4]),
+                    })
+                continue
             if not shape.has_text_frame:
                 continue
             text = shape.text_frame.text.strip()
             if text:
                 raw.append({"name": shape.name, "text": text[:120]})
 
-        # Count occurrences per name to detect duplicates
+        # Count occurrences per name to detect duplicates (text shapes only)
         counts: dict[str, int] = {}
         for s in raw:
-            counts[s["name"]] = counts.get(s["name"], 0) + 1
+            if s.get("type") != "table":
+                counts[s["name"]] = counts.get(s["name"], 0) + 1
 
-        # Assign indexed display names for shapes whose name appears > 1 time
         seen: dict[str, int] = {}
         shapes: list[dict] = []
         for s in raw:
+            if s.get("type") == "table":
+                shapes.append(s)
+                continue
             base = s["name"]
             if counts[base] > 1:
                 idx = seen.get(base, 0)
@@ -57,6 +77,11 @@ def format_for_prompt(inventory: dict) -> str:
             lines.append("  (no text shapes)")
             continue
         for shape in slide["shapes"]:
-            preview = shape["text"].replace("\n", " | ")
-            lines.append(f'  "{shape["name"]}": "{preview}"')
+            if shape.get("type") == "table":
+                lines.append(
+                    f'  [TABLE] "{shape["name"]}": {shape["rows"]}×{shape["cols"]}, preview: "{shape["preview"]}"'
+                )
+            else:
+                preview = shape["text"].replace("\n", " | ")
+                lines.append(f'  "{shape["name"]}": "{preview}"')
     return "\n".join(lines)
